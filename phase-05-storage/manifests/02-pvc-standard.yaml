@@ -1,0 +1,14 @@
+# Phase 5 / lab 2 — CSI 파이프라인 추적용 PVC (kind 기본 'standard' SC = local-path, WFFC)
+# standard는 WFFC라서, 아래 trace-pod가 스케줄될 때 provision이 시작된다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: trace-pvc
+  namespace: phase-05
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 64Mi

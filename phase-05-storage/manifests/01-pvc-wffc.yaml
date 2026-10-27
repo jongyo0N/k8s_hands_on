@@ -1,0 +1,15 @@
+# Phase 5 / lab 1 — WaitForFirstConsumer SC를 쓰는 PVC
+# 관찰 포인트: 소비 Pod가 생기기 전까지 Pending 으로 남는다.
+#   events: "waiting for first consumer to be created before binding"
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-wffc
+  namespace: phase-05
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: phase05-local-wffc
+  resources:
+    requests:
+      storage: 64Mi

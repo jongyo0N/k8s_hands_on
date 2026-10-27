@@ -1,0 +1,15 @@
+# Phase 5 / lab 3 — RWO PVC (관찰 랩)
+# ReadWriteOnce = "하나의 '노드'에서만" 마운트 가능(하나의 Pod가 아니다!).
+# local-path라 PV는 데이터가 실제로 올라간 노드에 nodeAffinity로 묶인다.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rwo-data
+  namespace: phase-05
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 64Mi

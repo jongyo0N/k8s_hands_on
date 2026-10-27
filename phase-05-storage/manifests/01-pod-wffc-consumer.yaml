@@ -1,0 +1,19 @@
+# Phase 5 / lab 1 — WFFC PVC의 소비 Pod
+# 이 Pod가 스케줄되는 순간 pvc-wffc가 비로소 Bound 된다(바인딩이 Pod를 "따라감").
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wffc-consumer
+  namespace: phase-05
+spec:
+  containers:
+    - name: app
+      image: busybox:1.37
+      command: ["sh", "-c", "echo wffc > /data/who.txt && sleep 3600"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: pvc-wffc

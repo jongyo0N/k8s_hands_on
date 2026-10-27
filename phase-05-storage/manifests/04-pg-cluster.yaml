@@ -1,0 +1,42 @@
+# Phase 5 / lab 4 — CloudNativePG Cluster (PostgreSQL)
+# CRD apiVersion: postgresql.cnpg.io/v1  (operator가 설치해야 이 종류를 알아본다)
+# Ref: https://cloudnative-pg.io/documentation/current/
+#
+# instances: 3 = primary 1 + standby 2. primary Pod를 지우면 standby 하나가 승격(failover).
+# storageClass: standard(= local-path, WFFC) → 인스턴스마다 자기 노드에 PVC 1개씩.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg-sample
+  namespace: phase-05
+spec:
+  instances: 3
+
+  # imageName 생략 시 operator 버전(1.30.1)에 핀된 기본 PostgreSQL 이미지를 쓴다.
+  # 특정 PG 버전으로 고정하려면 아래 주석을 풀고 태그를 명시한다(최신 태그 확인:
+  #   https://github.com/cloudnative-pg/postgres-containers/pkgs/container/postgresql).
+  # imageName: ghcr.io/cloudnative-pg/postgresql:17.5
+
+  # unsupervised = primary 교체/승격을 operator가 자동으로 진행(실습 failover에 적합).
+  primaryUpdateStrategy: unsupervised
+
+  storage:
+    size: 1Gi
+    storageClass: standard
+
+  # 랩톱 kind에 부담되지 않게 작게. 하드 memory limit은 initdb 중 OOM을 피하려 두지 않음.
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+
+  postgresql:
+    parameters:
+      shared_buffers: "64MB"
+      max_connections: "50"
+
+  # 부트스트랩: 비어 있는 새 클러스터를 initdb로 생성, app DB/계정 준비.
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
