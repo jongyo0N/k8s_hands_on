@@ -1,0 +1,49 @@
+# lab 1 — ClusterIP NAT 체인 추적용: nginx Deployment(replica 3) + ClusterIP Service
+# "Service는 iptables 규칙일 뿐"을 증명하기 위한 평범한 백엔드. 특별한 설정 없음.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: phase-03
+  labels:
+    app: web
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+              name: http
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clusterip-demo
+  namespace: phase-03
+  labels:
+    app: web
+spec:
+  type: ClusterIP
+  selector:
+    app: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

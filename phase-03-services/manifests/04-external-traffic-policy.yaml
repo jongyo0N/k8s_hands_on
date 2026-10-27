@@ -1,0 +1,110 @@
+# lab 4 — externalTrafficPolicy: Local vs Cluster 비교.
+# 백엔드 agnhost(netexec)는 디버깅 엔드포인트를 제공한다:
+#   GET /clientip  -> 서버가 "본" 출발지 IP:port (SNAT 여부 판별용)
+#   GET /hostname  -> 응답한 Pod 이름 (어느 노드의 Pod가 받았는지)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: etp-backend
+  namespace: phase-03
+  labels:
+    app: etp-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: etp-backend
+  template:
+    metadata:
+      labels:
+        app: etp-backend
+    spec:
+      # 2개 Pod를 서로 다른 노드로 강제 분산 -> worker 3대 중 최소 1대는 "엔드포인트 없음".
+      # 이 "엔드포인트 없는 노드"가 Local 정책에서 트래픽을 drop 하는 것을 관찰한다.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: etp-backend
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: agnhost
+          image: registry.k8s.io/e2e-test-images/agnhost:2.47
+          args: ["netexec", "--http-port=8080"]
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+# Cluster(기본값): 어느 노드로 들어와도 클러스터 전체 엔드포인트로 분배(필요하면 다른 노드로 hop).
+# 그 과정에서 SNAT가 일어나 Pod가 보는 출발지 IP가 "마지막 노드 IP"로 바뀐다(원본 소실).
+apiVersion: v1
+kind: Service
+metadata:
+  name: etp-cluster
+  namespace: phase-03
+  labels:
+    app: etp-backend
+spec:
+  type: NodePort
+  externalTrafficPolicy: Cluster
+  selector:
+    app: etp-backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+---
+# Local: 받은 노드의 "로컬 엔드포인트"로만 보낸다. hop/SNAT 없음 -> 출발지 IP 보존.
+# 대신 로컬 엔드포인트가 없는 노드는 트래픽을 버린다 -> 노드별 Pod 수가 다르면 부하 불균형.
+apiVersion: v1
+kind: Service
+metadata:
+  name: etp-local
+  namespace: phase-03
+  labels:
+    app: etp-backend
+spec:
+  type: NodePort
+  externalTrafficPolicy: Local
+  selector:
+    app: etp-backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+---
+# hostNetwork 클라이언트: 특정 worker의 netns 안에서 노드->노드로 NodePort를 때리기 위한 도구상자.
+# (kind는 macOS 호스트에서 노드 컨테이너 IP로 직접 라우팅이 안 되므로, 노드 안에서 호출한다.)
+# hostNetwork=true 라서 여기서 나가는 curl의 출발지 IP = 이 Pod가 올라간 노드의 IP.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: etp-client
+  namespace: phase-03
+  labels:
+    app: etp-client
+spec:
+  hostNetwork: true
+  nodeName: k8s-mastery-worker   # 첫 번째 worker에 고정(스케줄러 우회). 노드명=컨테이너명.
+  containers:
+    - name: netshoot
+      # 네트워크 디버깅 표준 이미지(curl/dig/tcpdump/ss 등 포함).
+      image: nicolaka/netshoot:v0.13
+      command: ["sleep", "infinity"]
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi

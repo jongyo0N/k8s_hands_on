@@ -1,0 +1,63 @@
+# lab 3 — readiness 실패 -> EndpointSlice에서 제외되는 과정 관찰용.
+# nginx가 /tmp/ready 파일 존재를 readinessProbe(exec cat)로 검사한다.
+#   - 시작 시 wrapper가 touch /tmp/ready 로 파일을 만들고 nginx를 foreground 실행.
+#   - 관찰 랩에서 `kubectl exec ... -- rm /tmp/ready` 로 파일을 지우면 probe가 실패
+#     -> Pod가 NotReady -> EndpointSlice의 그 endpoint가 conditions.ready=false.
+# nginx:1.27-alpine 의 busybox sh/touch/cat/rm 을 그대로 활용(별도 도구 불필요).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: readiness-demo
+  namespace: phase-03
+  labels:
+    app: readiness-demo
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: readiness-demo
+  template:
+    metadata:
+      labels:
+        app: readiness-demo
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          command: ["/bin/sh", "-c"]
+          args:
+            - "touch /tmp/ready && exec nginx -g 'daemon off;'"
+          ports:
+            - containerPort: 80
+              name: http
+          readinessProbe:
+            exec:
+              command: ["cat", "/tmp/ready"]
+            periodSeconds: 2       # 공격적으로: 2초마다 검사
+            failureThreshold: 2    # 2회 연속 실패 -> 약 4초 뒤 NotReady
+            successThreshold: 1
+            timeoutSeconds: 1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: readiness-demo
+  namespace: phase-03
+  labels:
+    app: readiness-demo
+spec:
+  type: ClusterIP
+  selector:
+    app: readiness-demo
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
