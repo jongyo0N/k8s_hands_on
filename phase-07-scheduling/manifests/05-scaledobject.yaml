@@ -1,0 +1,61 @@
+# Phase 7 / lab 5 (선택) — KEDA ScaledObject (cron 트리거, 0까지 축소)
+#
+# HPA는 minReplicas 를 1 아래로 못 내린다(0 스케일 불가). KEDA는 이벤트/스케줄
+# 기반으로 "0 ↔ N" 을 오갈 수 있다 — 유휴 시 비용 0.
+#   KEDA 동작: trigger가 비활성 → replicas 0 (KEDA가 직접 0으로). 활성 →
+#              KEDA가 내부적으로 HPA를 만들어 1..maxReplicaCount 범위를 관리.
+#
+# cron 트리거: 지정한 시간 창(start~end) 동안 desiredReplicas 로 올리고, 창 밖엔 0.
+#   아래는 "업무시간(UTC 06~20시)엔 3개, 그 외엔 0" 예시 — 바로 apply 가능하다.
+#   빠른 관찰을 위해 05-keda-scaledobject.sh 가 start/end 를 "지금+1분 ~ +6분" 으로
+#   패치해서 적용하므로, 몇 분 안에 0→3→0 전이를 볼 수 있다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keda-worker
+  namespace: phase-07
+  labels:
+    app: keda-worker
+spec:
+  # 초기값 1이지만, ScaledObject가 곧바로 접수해 트리거 상태대로(창 밖이면 0) 조정한다.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keda-worker
+  template:
+    metadata:
+      labels:
+        app: keda-worker
+    spec:
+      terminationGracePeriodSeconds: 1
+      containers:
+        - name: worker
+          image: busybox:1.37
+          command: ["sh", "-c", "echo 'keda-worker up'; sleep 3600"]
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              cpu: "50m"
+              memory: "32Mi"
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: keda-worker-cron
+  namespace: phase-07
+spec:
+  scaleTargetRef:
+    name: keda-worker          # 대상 Deployment (같은 네임스페이스)
+  minReplicaCount: 0           # ← 0까지 축소 허용 (HPA와의 결정적 차이)
+  maxReplicaCount: 5
+  pollingInterval: 15          # 트리거 평가 주기(초)
+  cooldownPeriod: 30           # 마지막 활성 이후 0으로 내리기까지 대기(초)
+  triggers:
+    - type: cron
+      metadata:
+        timezone: Etc/UTC      # cron 해석 기준 시간대 (아래 start/end와 반드시 일치)
+        start: "0 6 * * *"     # 매일 06:00 UTC 부터
+        end: "0 20 * * *"      # 매일 20:00 UTC 까지 desiredReplicas 유지
+        desiredReplicas: "3"   # 창 동안 유지할 replica 수 (문자열이어야 함)

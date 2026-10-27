@@ -1,0 +1,31 @@
+# Phase 7 / lab 1 — 비교군: CPU limit을 넉넉히(1코어) 상향한 같은 부하 Pod
+#
+# throttled Pod와 "완전히 동일한 busy-loop"를 돌리되 limit만 100m → 1000m.
+# cpu.stat 의 nr_throttled / throttled_usec 이 거의 0에 수렴하는 것을 비교 관찰한다.
+#
+# ⚖️ 트레이드오프(CPU limit 논쟁):
+#   - limit 제거/상향 → throttling 사라져 레이턴시(p99) 개선, 활용도 상승.
+#   - 대신 noisy neighbor 리스크: 한 Pod가 노드 CPU를 독식할 수 있다.
+#     (단, requests=50m 가 cgroup cpu.weight 로 "경합 시 최소 몫"은 보장한다.)
+#   - 중간안: 중요 워크로드만 limit 제거, 또는 static CPU manager로 코어 고정.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cpu-relaxed
+  namespace: phase-07
+  labels:
+    app: cpu-demo
+    variant: relaxed
+spec:
+  terminationGracePeriodSeconds: 1
+  containers:
+    - name: busy
+      image: busybox:1.37
+      command: ["sh", "-c", "while true; do :; done"]
+      resources:
+        requests:
+          cpu: "50m"      # requests는 throttled Pod와 동일 — 변수는 limit 하나뿐.
+          memory: "16Mi"
+        limits:
+          cpu: "1000m"    # ← 1코어까지 허용. busy-loop이 원하는 만큼 쓸 수 있다.
+          memory: "32Mi"

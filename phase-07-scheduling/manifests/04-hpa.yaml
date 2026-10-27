@@ -1,0 +1,49 @@
+# Phase 7 / lab 4 — HPA (autoscaling/v2) + behavior 로 플래핑 방지
+#
+# HPA 제어 루프(기본 15초마다, --horizontal-pod-autoscaler-sync-period):
+#   metrics-server 가 kubelet(cAdvisor)에서 CPU 수집 → HPA가 utilization 계산 →
+#   desiredReplicas = ceil(현재replicas * (현재사용률 / 타겟사용률)) → 스케일.
+#
+# behavior 가 없으면: 트래픽이 출렁일 때 replica가 급등락(플래핑)하며 비용·불안정 유발.
+# behavior 로 "올라갈 땐 빠르게, 내려갈 땐 천천히(관성)" 비대칭 정책을 준다.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: php-apache
+  namespace: phase-07
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: php-apache
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50   # Pod 평균 CPU 사용률 50% 를 목표로 유지
+  behavior:
+    scaleUp:
+      # 스파이크엔 즉시 반응: 안정화 윈도우 0초.
+      stabilizationWindowSeconds: 0
+      # 15초마다 "현재의 100% 추가" 또는 "4개 추가" 중 더 큰 쪽까지 허용(공격적).
+      selectPolicy: Max
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+    scaleDown:
+      # 축소는 보수적: 최근 300초(5분) 중 "가장 높았던 추천치"를 채택 →
+      # 트래픽이 잠깐 빠져도 바로 줄이지 않아 플래핑을 막는다.
+      stabilizationWindowSeconds: 300
+      # 60초마다 최대 현재의 50%만 줄인다(한꺼번에 축소 금지).
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
