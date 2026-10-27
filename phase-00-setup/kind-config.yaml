@@ -1,0 +1,27 @@
+# Phase 0 — 4-node kind cluster (control-plane 1 + worker 3)
+# Ref: https://kind.sigs.k8s.io/docs/user/configuration/
+#
+# 노드 labels는 kind가 kubeadm nodeRegistration.kubeletExtraArgs(--node-labels)로
+# 넘겨, 노드가 "스스로" 붙인다. 그래서 NodeRestriction admission의 제약을 받는다:
+# kubernetes.io / k8s.io 접두어의 예약 라벨은 노드가 자기 자신에게 붙이지 못한다.
+# → 여기서는 커스텀 접두어 'node-tier'만 쓰고,
+#   topology.kubernetes.io/zone 같은 예약 라벨은 생성 후 kubectl(관리자 경로)로 붙인다.
+#   (01-create-cluster.sh 참고. 이 차이를 NOTES.md에서 확인한다.)
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: k8s-mastery
+nodes:
+  - role: control-plane
+    # control-plane 노드는 etcd / kube-apiserver / scheduler / controller-manager를
+    # static pod로 띄운다. lab 03에서 이 컨테이너를 멈춰 영향을 관찰한다.
+    labels:
+      node-tier: control
+  - role: worker
+    labels:
+      node-tier: app
+  - role: worker
+    labels:
+      node-tier: app
+  - role: worker
+    labels:
+      node-tier: data
