@@ -1,0 +1,47 @@
+# Phase 4 / lab 3 — "필요한 것만 허용" ... 인데 DNS를 '일부러' 빼먹은 버전
+#
+# client → server:80 (egress)  과  server ← client:80 (ingress) 는 열었다.
+# 하지만 DNS(egress 53 → kube-dns)는 열지 않았다.
+# → 결과: 'IP로는' server에 붙지만, 'netpol-server 라는 이름'은 해석이 안 된다.
+#   (default-deny egress가 kube-dns로 가는 53번 패킷까지 막고 있기 때문)
+# 이것이 NetworkPolicy 입문자가 가장 자주 밟는 지뢰다. 04 파일에서 고친다.
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: client-egress-to-server
+  namespace: netpol-demo
+spec:
+  podSelector:
+    matchLabels:
+      app: netpol-client
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: netpol-server
+      ports:
+        - protocol: TCP
+          port: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: server-ingress-from-client
+  namespace: netpol-demo
+spec:
+  podSelector:
+    matchLabels:
+      app: netpol-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: netpol-client
+      ports:
+        - protocol: TCP
+          port: 80

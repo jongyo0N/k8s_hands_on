@@ -1,0 +1,71 @@
+# Phase 4 / lab 2 — Gateway 뒤에 둘 두 버전의 백엔드 (v1, v2)
+# http-echo는 받은 경로와 무관하게 고정 텍스트를 돌려준다 → 어느 백엔드로 갔는지 눈으로 구분.
+# 이미지 태그는 고정. 최신은 https://hub.docker.com/r/hashicorp/http-echo/tags 에서 확인.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gw-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo-v1
+  namespace: gw-demo
+  labels: { app: echo, version: v1 }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: echo, version: v1 }
+  template:
+    metadata:
+      labels: { app: echo, version: v1 }
+    spec:
+      containers:
+        - name: echo
+          image: hashicorp/http-echo:0.2.3
+          args: ["-text=echo v1", "-listen=:5678"]
+          ports:
+            - containerPort: 5678
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo-v1
+  namespace: gw-demo
+spec:
+  selector: { app: echo, version: v1 }
+  ports:
+    - port: 80
+      targetPort: 5678
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo-v2
+  namespace: gw-demo
+  labels: { app: echo, version: v2 }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: echo, version: v2 }
+  template:
+    metadata:
+      labels: { app: echo, version: v2 }
+    spec:
+      containers:
+        - name: echo
+          image: hashicorp/http-echo:0.2.3
+          args: ["-text=echo v2", "-listen=:5678"]
+          ports:
+            - containerPort: 5678
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo-v2
+  namespace: gw-demo
+spec:
+  selector: { app: echo, version: v2 }
+  ports:
+    - port: 80
+      targetPort: 5678
