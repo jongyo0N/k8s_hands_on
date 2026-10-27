@@ -1,0 +1,19 @@
+# Phase 6 / lab 4 — Helm 기본값(values).
+# 환경 분기는 values 덮어쓰기로 한다:
+#   helm template myapp . -f values.yaml -f values-prod.yaml   (또는 --set replicaCount=3 ...)
+# Kustomize가 'base + overlay 패치'로 하는 일을, Helm은 '템플릿 + values 주입'으로 한다 — 이 대비가 lab 4의 핵심.
+replicaCount: 1
+
+image:
+  repository: nginx
+  tag: "1.27-alpine"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+# ConfigMap으로 주입할 앱 설정
+config:
+  appEnv: "base"
+  greeting: "hello from helm (base values)"

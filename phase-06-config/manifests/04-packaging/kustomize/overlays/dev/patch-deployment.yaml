@@ -1,0 +1,7 @@
+# dev: 레플리카 2로 (base는 1). strategic merge patch — 바꿀 필드만 적는다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 2

@@ -1,0 +1,10 @@
+myapp 차트가 렌더되었습니다 (release: {{ .Release.Name }}, namespace: {{ .Release.Namespace }}).
+
+배포 리소스:
+  - Deployment {{ include "myapp.fullname" . }} (replicas={{ .Values.replicaCount }})
+  - Service    {{ include "myapp.fullname" . }} ({{ .Values.service.type }}:{{ .Values.service.port }})
+  - ConfigMap  {{ include "myapp.fullname" . }}-config (APP_ENV={{ .Values.config.appEnv }})
+
+렌더만 확인하려면:
+  helm template {{ .Release.Name }} .                     # base
+  helm template {{ .Release.Name }} . -f values-prod.yaml # prod 오버라이드

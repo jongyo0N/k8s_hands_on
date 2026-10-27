@@ -1,0 +1,9 @@
+# Phase 6 / lab 4 — 같은 앱을 Helm으로 패키징 (Kustomize 버전과 렌더 결과 비교용)
+# apiVersion: v2 = Helm 3/4 차트 포맷. (Helm 2의 v1과 구분)
+apiVersion: v2
+name: myapp
+description: Phase 6 lab 4 데모 앱 — Helm 템플릿 방식 패키징
+type: application
+# 차트 자체 버전(패키지 버전)과 앱 버전은 별개로 관리한다.
+version: 0.1.0
+appVersion: "1.27-alpine"

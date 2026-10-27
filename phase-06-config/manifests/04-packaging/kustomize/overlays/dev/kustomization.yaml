@@ -1,0 +1,14 @@
+# Phase 6 / lab 4 — dev overlay. base를 가져와 dev 환경 차이만 얹는다.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: phase-06
+namePrefix: dev-
+
+resources:
+  - ../../base
+
+# patch의 target은 patch 문서의 group/kind/name으로 '자동 추론'된다(base 원래 이름 기준).
+patches:
+  - path: patch-deployment.yaml
+  - path: patch-configmap.yaml

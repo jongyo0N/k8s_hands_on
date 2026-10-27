@@ -1,0 +1,8 @@
+# dev: ConfigMap 값만 덮어쓴다(이름은 base 기준 myapp-config, namePrefix 적용 전).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myapp-config
+data:
+  APP_ENV: "dev"
+  GREETING: "hello from kustomize (dev overlay)"

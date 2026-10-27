@@ -1,0 +1,13 @@
+# Phase 6 / lab 4 — prod overlay. 같은 base, prod 차이만 얹는다.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: phase-06
+namePrefix: prod-
+
+resources:
+  - ../../base
+
+patches:
+  - path: patch-deployment.yaml
+  - path: patch-configmap.yaml

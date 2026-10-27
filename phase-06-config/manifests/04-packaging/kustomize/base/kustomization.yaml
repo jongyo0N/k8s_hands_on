@@ -1,0 +1,16 @@
+# Phase 6 / lab 4 — Kustomize base.
+# base = '환경 공통' 리소스. 환경별 차이는 overlays/{dev,prod} 에서 patch로 얹는다.
+# Helm이 '템플릿 + values'로 하는 일을, Kustomize는 '순수 YAML base + 선언적 patch'로 한다(템플릿 언어 없음).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+
+# commonLabels(구식) 대신 modern labels 트랜스포머 사용. includeSelectors=true면 selector에도 반영.
+labels:
+  - pairs:
+      app.kubernetes.io/name: myapp
+    includeSelectors: true

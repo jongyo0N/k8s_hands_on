@@ -1,0 +1,8 @@
+# Phase 6 / lab 4 — prod 오버라이드 values (base 위에 겹쳐 쓴다).
+#   helm template myapp . -f values.yaml -f values-prod.yaml
+# Kustomize의 overlays/prod 와 '같은 의도'를 Helm 방식으로 표현한 것.
+replicaCount: 3
+
+config:
+  appEnv: "prod"
+  greeting: "hello from helm (prod override)"

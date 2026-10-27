@@ -1,0 +1,8 @@
+# prod: ConfigMap 값 덮어쓰기.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myapp-config
+data:
+  APP_ENV: "prod"
+  GREETING: "hello from kustomize (prod overlay)"
