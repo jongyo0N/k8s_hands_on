@@ -1,0 +1,47 @@
+# docker compose (v2) 멀티서비스 예제: web + db
+# 검증: `docker compose -f docker-foundations/02-compose/docker-compose.yml config`
+#
+# compose v2에서는 상단 `version:` 키가 obsolete(불필요)다.
+name: docker-foundations
+
+services:
+  web:
+    build:
+      # 빌드 컨텍스트는 Dockerfile이 있는 폴더 (compose 파일 기준 상대경로)
+      context: ../01-dockerfile
+    image: df-web:local
+    environment:
+      APP_VERSION: "1.0.0"
+      # 서비스 이름 'db'가 compose 내부 DNS로 해석된다 (k8s Service 디스커버리의 축소판)
+      DATABASE_URL: "postgresql://app:secret@db:5432/appdb"
+      PORT: "8080"
+    ports:
+      - "8080:8080"          # 호스트:컨테이너 — web만 외부로 노출
+    depends_on:
+      db:
+        condition: service_healthy   # db가 'healthy'가 될 때까지 web 시작을 보류
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: secret     # ⚠️ 실습용 평문. 실무에선 secret 관리로(Phase 6)
+      POSTGRES_DB: appdb
+    volumes:
+      - db-data:/var/lib/postgresql/data   # named volume → 컨테이너 재생성에도 데이터 유지
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d appdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # db는 ports를 호스트에 노출하지 않음 → 내부 네트워크에서 web만 접근(최소 노출)
+
+volumes:
+  db-data:
