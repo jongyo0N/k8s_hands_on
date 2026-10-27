@@ -1,0 +1,51 @@
+# Lab 04 (B) — "일시적 오류"는 재시도한다
+#
+# 정책(podFailurePolicy)은 (A)와 완전히 동일. 단 하나, worker가 exit 1로 끝난다.
+# 1은 FailJob 규칙(42)에도, Ignore 규칙(DisruptionTarget)에도 안 걸린다.
+# → 기본 action=Count → backoffLimit(3)까지 재시도. 총 4번(최초 1 + 재시도 3) 시도 후
+#   끝내 실패하면 Job이 BackoffLimitExceeded로 종료된다.
+# 같은 정책인데 exit code만으로 (A)와 동작이 갈린다는 것이 이 랩의 핵심.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pfp-retryable
+  namespace: phase-02
+  labels:
+    lab: podfailurepolicy
+    case: retryable
+spec:
+  backoffLimit: 3
+  podFailurePolicy:
+    rules:
+      - action: FailJob
+        onExitCodes:
+          containerName: worker
+          operator: In
+          values: [42]
+      - action: Ignore
+        onPodConditions:
+          - type: DisruptionTarget
+            status: "True"
+  template:
+    metadata:
+      labels:
+        lab: podfailurepolicy
+        case: retryable
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: worker
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "[worker] 작업 시작";
+              sleep 2;
+              echo "[worker] 일시적 오류 — 재시도할 가치 있음. exit 1";
+              exit 1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi

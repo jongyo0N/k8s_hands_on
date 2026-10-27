@@ -1,0 +1,52 @@
+# Lab 01 (AFTER) — startup probe로 "기동 구간"을 분리해 CrashLoop 해소
+#
+# 교훈: liveness/readiness와 startup은 목적이 다르다.
+#   - startup : "아직 떠보려는 중인가?"  (기동 느린 앱의 유예 시간 담당)
+#   - liveness: "떴는데 데드락/먹통인가?" (복구 불가 상태를 재시작으로 치유)
+# startup probe가 성공하기 전까지 liveness/readiness는 아예 실행되지 않는다.
+# 그래서 긴 기동 시간을 liveness 타이머와 분리할 수 있다.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: slow-start-fixed
+  namespace: phase-02
+  labels:
+    app: slow-start
+    variant: fixed
+spec:
+  containers:
+    - name: app
+      image: busybox:1.36
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          echo "[init] 앱 초기화 시작 — 20초간 준비 작업 흉내";
+          sleep 20;
+          echo "ok" > /tmp/index.html;
+          echo "[ready] 8080 포트 리슨 시작";
+          exec httpd -f -p 8080 -h /tmp
+      ports:
+        - containerPort: 8080
+      # 해법: startup probe가 기동 구간을 책임진다.
+      #   허용 기동 시간 = periodSeconds * failureThreshold = 3 * 15 = 최대 45초.
+      #   서버가 20초에 뜨면 그 시점에 startup 성공 → 이후 liveness로 전환.
+      startupProbe:
+        httpGet:
+          path: /
+          port: 8080
+        periodSeconds: 3
+        failureThreshold: 15
+      # liveness 설정은 BEFORE와 동일. 단, startup 통과 뒤에만 동작하므로
+      # 더 이상 "기동 중"인 컨테이너를 죽이지 않는다.
+      livenessProbe:
+        httpGet:
+          path: /
+          port: 8080
+        periodSeconds: 3
+        failureThreshold: 3
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          memory: 32Mi

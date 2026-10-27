@@ -1,0 +1,53 @@
+# Lab 04 (A) — "영구 오류"는 즉시 포기한다
+#
+# worker가 exit 42로 끝난다. podFailurePolicy의 FailJob 규칙이 이 코드를 잡아
+# backoffLimit(3)을 쓰지 않고 Job을 "즉시" 실패시킨다.
+# → 재시도해도 무의미한 실패(잘못된 설정·입력)에 재시도 예산을 낭비하지 않는다.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pfp-fatal
+  namespace: phase-02
+  labels:
+    lab: podfailurepolicy
+    case: fatal
+spec:
+  backoffLimit: 3   # "그 외" 실패엔 3회까지 재시도. 하지만 42는 아래 규칙이 가로채 즉시 중단.
+  podFailurePolicy:
+    rules:
+      # 규칙1: worker가 42로 종료 = 재시도 무의미한 영구 오류 → 즉시 Job 실패(FailJob).
+      - action: FailJob
+        onExitCodes:
+          containerName: worker
+          operator: In
+          values: [42]
+      # 규칙2: 노드 drain·선점 등 인프라 교란으로 죽은 경우 → backoffLimit 소모 없이 재시도(Ignore).
+      - action: Ignore
+        onPodConditions:
+          - type: DisruptionTarget
+            status: "True"
+      # (규칙에 안 걸리는 나머지 exit code는 기본 action=Count → backoffLimit까지 재시도)
+  template:
+    metadata:
+      labels:
+        lab: podfailurepolicy
+        case: fatal
+    spec:
+      # podFailurePolicy는 restartPolicy: Never와 함께 쓴다(컨테이너 종료를 Pod 실패로 다룸).
+      restartPolicy: Never
+      containers:
+        - name: worker
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "[worker] 작업 시작";
+              sleep 2;
+              echo "[worker] 치명적 오류 — 재시도해도 소용없음. exit 42";
+              exit 42
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 32Mi

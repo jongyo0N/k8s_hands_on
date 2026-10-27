@@ -1,0 +1,17 @@
+# Lab 02 — rolling-web 앞단 ClusterIP Service
+# 부하 생성기(load generator)는 이 Service 이름(rolling-svc.phase-02)으로 요청을 보낸다.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rolling-svc
+  namespace: phase-02
+  labels:
+    app: rolling-web
+spec:
+  type: ClusterIP
+  selector:
+    app: rolling-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
