@@ -1,0 +1,22 @@
+# API 티어 Service (Phase 3). ClusterIP = 가상 IP, 실제 전달은 kube-proxy/CNI가.
+#   - http    : Gateway HTTPRoute가 backend로 참조.
+#   - metrics : ServiceMonitor가 scrape 대상으로 참조.
+apiVersion: v1
+kind: Service
+metadata:
+  name: capstone-api
+  labels:
+    app.kubernetes.io/name: capstone-api
+    app.kubernetes.io/part-of: capstone
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: capstone-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+    - name: metrics
+      port: 9113
+      targetPort: metrics

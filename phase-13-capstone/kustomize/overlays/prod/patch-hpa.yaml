@@ -1,0 +1,8 @@
+# prod: 트래픽 변동을 넓게 흡수(안정성 우선). strategic merge patch.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: capstone-api
+spec:
+  minReplicas: 4
+  maxReplicas: 20

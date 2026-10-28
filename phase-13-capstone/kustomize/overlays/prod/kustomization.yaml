@@ -1,0 +1,26 @@
+# prod 오버레이 — 안정성 우선 (Phase 13: 비용 vs 안정성).
+#   - API replica 4, HPA 범위 확대(4~20).
+#   - topology spread로 zone에 고르게 분산(Phase 7) → 단일 zone 장애 내성.
+#
+# ⚠️ dev/prod는 둘 다 namespace=capstone. 한 번에 하나만 적용한다(dev/kustomization 주석 참고).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: capstone
+
+resources:
+  - ../../base
+
+replicas:
+  - name: capstone-api
+    count: 4
+
+patches:
+  - path: patch-hpa.yaml
+    target:
+      kind: HorizontalPodAutoscaler
+      name: capstone-api
+  - path: patch-api-spread.yaml
+    target:
+      kind: Deployment
+      name: capstone-api

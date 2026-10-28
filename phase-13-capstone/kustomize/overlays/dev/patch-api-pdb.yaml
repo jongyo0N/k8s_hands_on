@@ -1,0 +1,7 @@
+# dev: replica 1이라 minAvailable 2는 drain을 영구 차단한다.
+# maxUnavailable 1로 바꿔 자발적 중단을 허용(JSON patch로 minAvailable 제거 후 교체).
+- op: remove
+  path: /spec/minAvailable
+- op: add
+  path: /spec/maxUnavailable
+  value: 1

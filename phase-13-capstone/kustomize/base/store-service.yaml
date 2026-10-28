@@ -1,0 +1,19 @@
+# 저장소 headless Service (Phase 3 — clusterIP: None).
+# headless → 가상 IP 없이 Pod별 DNS(A 레코드)를 노출. StatefulSet의 안정적 identity와 결합.
+#   capstone-store-0.capstone-store.capstone.svc.cluster.local
+apiVersion: v1
+kind: Service
+metadata:
+  name: capstone-store
+  labels:
+    app.kubernetes.io/name: capstone-store
+    app.kubernetes.io/part-of: capstone
+    app.kubernetes.io/component: store
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: capstone-store
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis

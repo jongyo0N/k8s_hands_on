@@ -1,0 +1,132 @@
+# NetworkPolicy — default-deny 후 필요한 통신만 허용 (Phase 4).
+#
+# ⚠️ 집행자는 CNI다. kind 기본 CNI(kindnet)는 NetworkPolicy를 집행하지 않는다.
+#    Phase 4에서 Cilium/Calico 같은 집행 가능한 CNI를 깔아야 이 정책이 실제로 먹는다.
+#    그 전엔 apply는 되지만 트래픽은 그대로 흐른다(정책이 '존재'만 함).
+#
+# ⚠️ 외부 네임스페이스는 라벨로 식별한다. 적용 전에 라벨을 붙여야 한다:
+#    kubectl label ns <gateway-ns>    capstone.k8s/role=gateway
+#    kubectl label ns <monitoring-ns> capstone.k8s/role=monitoring
+#    (라벨이 없으면 해당 allow가 매칭되지 않아 Gateway/scrape가 막힌다 — 의도된 default-deny.)
+
+# 1) default-deny: 네임스페이스 모든 Pod의 ingress·egress를 기본 차단.
+#    규칙이 없는 정책 = 모두 거부. 이후 allow 정책들이 구멍을 뚫는다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  labels:
+    app.kubernetes.io/part-of: capstone
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# 2) DNS egress 허용: default-deny가 제일 먼저 끊는 게 DNS다(Phase 4의 단골 장애).
+#    모든 Pod가 kube-system의 CoreDNS로 53/udp·53/tcp를 보낼 수 있게 한다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  labels:
+    app.kubernetes.io/part-of: capstone
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# 3) Gateway → API ingress 허용: gateway 네임스페이스의 데이터플레인만 8080으로.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-to-api
+  labels:
+    app.kubernetes.io/part-of: capstone
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: capstone-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              capstone.k8s/role: gateway
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# 4) 모니터링 → API metrics ingress 허용: monitoring 네임스페이스만 9113으로.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-scrape
+  labels:
+    app.kubernetes.io/part-of: capstone
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: capstone-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              capstone.k8s/role: monitoring
+      ports:
+        - { protocol: TCP, port: 9113 }
+---
+# 5) API → store egress 허용: API Pod만 store의 6379로 나갈 수 있다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-egress-to-store
+  labels:
+    app.kubernetes.io/part-of: capstone
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: capstone-api
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: capstone-store
+      ports:
+        - { protocol: TCP, port: 6379 }
+---
+# 6) store ingress 허용: API Pod에서 오는 6379만 받는다(그 외 전부 거부).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-store-ingress-from-api
+  labels:
+    app.kubernetes.io/part-of: capstone
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: capstone-store
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: capstone-api
+      ports:
+        - { protocol: TCP, port: 6379 }

@@ -1,0 +1,70 @@
+# 상태ful 저장소 티어 (Phase 2 StatefulSet + Phase 5 스토리지 + Phase 8 하드닝).
+#
+# ⚠️ 이것은 '뼈대'다. StatefulSet은 안정적 identity와 PVC는 보장하지만
+#    복제·리더선출·failover는 보장하지 않는다(Phase 2 완료기준). 진짜 프로덕션이라면
+#    operator가 관리하는 저장소(CloudNativePG/Strimzi 등, Phase 5/11)로 간다.
+#    여기선 단일 replica Redis로 "상태ful 티어가 어떻게 끼워지는가"만 보여준다.
+#
+# 스토리지(Phase 5): volumeClaimTemplate → PVC가 Pod별로 생성되고 StorageClass가
+#   동적 프로비저닝. kind 기본 'standard'(local-path)는 노드에 데이터를 고정하므로,
+#   노드가 죽으면 그 PV에 다시 붙지 못한다 → node-down.sh에서 바로 이 현상을 관찰한다.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: capstone-store
+  labels:
+    app.kubernetes.io/name: capstone-store
+    app.kubernetes.io/part-of: capstone
+    app.kubernetes.io/component: store
+spec:
+  serviceName: capstone-store      # headless Service와 연결 → 안정적 DNS(capstone-store-0.*).
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: capstone-store
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: capstone-store
+        app.kubernetes.io/part-of: capstone
+        app.kubernetes.io/component: store
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999             # alpine redis 이미지의 redis 유저.
+        runAsGroup: 999
+        fsGroup: 999               # PVC(/data)를 그룹 소유로 쓰기 가능하게.
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args: ["--dir", "/data"]   # 데이터는 PVC에만 쓴다 → RO rootfs와 양립.
+          ports:
+            - name: redis
+              containerPort: 6379
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: redis }
+            periodSeconds: 10
+          volumeMounts:
+            - { name: data, mountPath: /data }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]   # RWO = '노드' 단위 접근(Phase 5).
+        resources:
+          requests:
+            storage: 1Gi
