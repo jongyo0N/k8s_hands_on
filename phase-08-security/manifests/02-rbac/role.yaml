@@ -1,0 +1,31 @@
+# Phase 8 / lab 2 — 최소 권한 Role (네임스페이스 범위)
+#
+# 설계 원칙: "이 앱이 실제로 필요한 동작"만 verb/resource로 나열한다.
+# 가정한 앱: 자기 설정(ConfigMap)을 읽고, 같은 네임스페이스의 동료 Pod를 조회해
+#            피어 디스커버리를 한다. 쓰기/삭제/시크릿 접근은 필요 없다.
+#
+# 의도적으로 '빠진' 것들 — 02-rbac-audit.sh가 "없음"을 검증한다:
+#   - secrets            : 읽기조차 주지 않는다 (가장 흔한 과잉 권한)
+#   - create/update/delete : 읽기 전용 앱이므로 모든 쓰기 verb 제외
+#   - 와일드카드 '*'      : resources/verbs에 '*'를 쓰면 미래의 신규 권한까지 자동 부여됨 → 금지
+#   - escalate/bind/impersonate : 권한 상승 verb (RBAC 자체를 넘어서게 하는 위험 verb)
+#   - 클러스터 범위 리소스(nodes 등) : Role은 네임스페이스에 갇히므로 애초에 불가
+#
+# Role vs ClusterRole: 네임스페이스 안에서만 유효하면 Role. 클러스터 전역/비네임스페이스
+# 리소스가 필요할 때만 ClusterRole. 범위를 좁히는 것 자체가 방어다.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: app-reader
+  namespace: phase-08
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  # 디버깅용 로그 조회가 꼭 필요하면 아래를 추가 (서브리소스도 명시적으로):
+  # - apiGroups: [""]
+  #   resources: ["pods/log"]
+  #   verbs: ["get"]

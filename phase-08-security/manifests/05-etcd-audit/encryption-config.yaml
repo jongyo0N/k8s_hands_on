@@ -1,0 +1,42 @@
+# Phase 8 / lab 5 — etcd Encryption at Rest 설정
+#
+# 기본 상태의 etcd에는 Secret이 '평문(base64 인코딩일 뿐)'으로 저장된다. etcd 디스크/
+# 백업이 유출되면 모든 Secret이 노출된다. EncryptionConfiguration으로 '저장 시 암호화'한다.
+#
+# kube-apiserver에 --encryption-provider-config=<이 파일 경로> 로 넘겨 적용한다
+# (05-etcd-audit.sh의 적용 안내 참고). apiserver가 '쓰기 때 암호화 / 읽기 때 복호화'한다.
+#
+# provider 순서 = 보안 규칙:
+#   - 목록의 '첫' provider가 '쓰기 암호화'에 쓰인다.
+#   - 읽기는 위에서부터 차례로 시도(여러 키 회전·마이그레이션 지원).
+#   - identity(=평문)를 '첫'에 두면 암호화가 꺼진다. 반드시 '마지막'에 둬서
+#     '아직 암호화 전인 기존 데이터 읽기' 폴백으로만 쓴다.
+#
+# provider 선택(2026 기준):
+#   - secretbox : XSalsa20-Poly1305. 정적 키에 권장, 빠르고 회전 카운트 제약 없음 (여기서 사용)
+#   - aesgcm    : 빠르지만 키당 ~2^32 쓰기 전에 '반드시' 회전해야 안전 (KMS·자동회전과 함께)
+#   - aescbc    : 패딩 오라클 우려로 신규 권장 안 함
+#   - kms (v2)  : 프로덕션 권장. 외부 KMS(KEK)로 DEK를 봉인 → 키 관리/회전을 위임
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+      - secrets
+      # - configmaps        # 민감 설정을 ConfigMap에 두는 경우 함께 암호화하려면 주석 해제
+    providers:
+      - secretbox:
+          keys:
+            - name: key1
+              # 32바이트 랜덤 키를 base64로. 생성: head -c 32 /dev/urandom | base64
+              # (아래는 '자리표시자' — 반드시 교체. 이 값은 절대 깃에 커밋 금지.)
+              secret: REPLACE_ME_BASE64_32BYTE_RANDOM_KEY_DO_NOT_COMMIT=
+      - identity: {}         # 평문 폴백 — 반드시 '마지막'
+# ─────────────────────────────────────────────────────────────────────────────
+# (참고) 프로덕션 KMS v2 provider 예시 — 외부 KMS 플러그인 소켓과 연동:
+#     providers:
+#       - kms:
+#           apiVersion: v2
+#           name: myKmsPluginV2
+#           endpoint: unix:///var/run/kmsplugin/socket.sock
+#           timeout: 3s
+#       - identity: {}
