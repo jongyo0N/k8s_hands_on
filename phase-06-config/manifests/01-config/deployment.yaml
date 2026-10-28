@@ -1,0 +1,48 @@
+# Phase 6 / lab 1 — 동일 ConfigMap을 (1) env, (2) volume 두 방식으로 '동시에' 주입.
+# 컨테이너는 5초마다 두 경로의 값을 함께 찍는다 → 로그 한 줄로 전파 차이를 바로 본다.
+#   예: "env=[v1 ...]  file=[v1 ...]"  → ConfigMap을 v2로 바꾸면 일정 시간 뒤 "env=[v1 ...]  file=[v2 ...]"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-demo
+  namespace: phase-06
+  labels:
+    app: config-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: config-demo
+  template:
+    metadata:
+      labels:
+        app: config-demo
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "[start] 컨테이너 시작 (pid=$$)";
+              while true; do
+                file_val="$(grep '^greeting=' /etc/appcfg/app.conf | cut -d= -f2-)";
+                echo "env=[$GREETING]  file=[$file_val]";
+                sleep 5;
+              done
+          env:
+            # (1) env 주입: ConfigMap 값이 '환경변수로 복사'된다. Pod가 다시 뜨기 전엔 절대 안 바뀐다.
+            - name: GREETING
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: GREETING
+          volumeMounts:
+            # (2) volume 주입: ConfigMap이 '파일로' 마운트된다. kubelet sync로 주기적 갱신(기본 1분 + 캐시 TTL).
+            - name: cfg
+              mountPath: /etc/appcfg
+              readOnly: true
+      volumes:
+        - name: cfg
+          configMap:
+            name: app-config

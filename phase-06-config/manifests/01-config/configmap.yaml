@@ -1,0 +1,16 @@
+# Phase 6 / lab 1 — env 와 volume 양쪽으로 주입할 "같은" ConfigMap.
+# 나중에 GREETING 값을 바꿔 전파 차이를 관찰한다:
+#   - env 로 주입된 값   → Pod 생성 시점에 복사됨 → ConfigMap을 바꿔도 반영 안 됨(재시작 필요)
+#   - volume 으로 주입된 값 → kubelet이 주기적으로 갱신 → 일정 시간 뒤 파일이 바뀜
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: phase-06
+data:
+  # (1) env(valueFrom)로 주입할 단일 키
+  GREETING: "v1 (hello from ConfigMap)"
+  # (2) volume mount로 주입할 설정 파일 (파일명이 곧 mount된 파일명이 된다)
+  app.conf: |
+    greeting=v1 (hello from ConfigMap)
+    log_level=info

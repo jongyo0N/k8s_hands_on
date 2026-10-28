@@ -1,0 +1,31 @@
+# Phase 6 / lab 2 — etcd encryption at rest 설정 (aescbc provider).
+# 이 파일은 kube-apiserver의 --encryption-provider-config 로 지정하는 '클러스터 전역' 설정이다(네임스페이스 없음).
+#
+# provider 목록의 순서가 전부다:
+#   - 목록의 '첫' provider가 '쓰기(암호화)'에 쓰인다 → 여기서는 aescbc.
+#   - 읽기는 위에서부터 차례로 시도 → 마지막 identity 덕분에 '아직 평문인(암호화 전)' Secret도 읽힌다.
+#   - 그래서 켠 직후엔 기존 평문 Secret도 정상 조회되고,
+#     `kubectl get secrets -A -o json | kubectl replace -f -` 로 재저장하면 aescbc로 재암호화된다.
+#   - 반대로 암호화를 '끄려면' identity를 맨 앞으로 올리고 다시 replace 하면 된다.
+#
+# secret 키: 32바이트 랜덤을 base64 인코딩한 값. 실제 키는 02b 스크립트가 생성해 control-plane 노드에만 심는다.
+#   생성:  head -c 32 /dev/urandom | base64
+#   ⚠️ 실제 키를 git에 커밋하지 말 것. 아래 값은 파싱용 placeholder다(02b가 실키로 치환한 사본을 노드에 복사).
+#
+# ⚠️ provider 선택 주의: aescbc는 AEAD가 아니고(무결성 취약) 공식 문서도 신규 클러스터엔 권장하지 않는다.
+#    대안: secretbox(encryption-config.secretbox.yaml 참고), 프로덕션은 KMS v2 provider(외부 KMS로 DEK 관리).
+#
+# 버전 핀 / 최신 확인: EncryptionConfiguration의 GA apiVersion은 apiserver.config.k8s.io/v1.
+#    최신 provider(특히 kms v2) 지원 범위는 사용 중인 k8s 버전 문서로 재확인:
+#    https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+      - secrets
+    providers:
+      - aescbc:
+          keys:
+            - name: key1
+              secret: REPLACE_WITH_BASE64_32BYTE_KEY
+      - identity: {}

@@ -1,0 +1,43 @@
+# Phase 6 / lab 1 — Reloader(stakater) 자동 재시작 데모용 Deployment.
+# config-demo 와 거의 같지만, metadata.annotations 에 Reloader 트리거를 달았다.
+#   reloader.stakater.com/auto: "true"
+#     → 이 Deployment가 '참조하는' ConfigMap/Secret이 바뀌면 Reloader가 롤링 재시작을 걸어준다.
+#   (특정 리소스만 보려면 configmap.reloader.stakater.com/reload: "app-config" 처럼 지정)
+# 효과: 재시작이 자동으로 걸리므로 env로 주입한 값까지 '새 Pod'에서 갱신된다
+#       → "env는 재시작 필요"의 실무적 해결책이 Reloader류다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-demo-reloader
+  namespace: phase-06
+  labels:
+    app: config-demo-reloader
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: config-demo-reloader
+  template:
+    metadata:
+      labels:
+        app: config-demo-reloader
+    spec:
+      containers:
+        - name: app
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "[start] 컨테이너 시작 (pid=$$)";
+              while true; do
+                echo "env=[$GREETING]";
+                sleep 5;
+              done
+          env:
+            - name: GREETING
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: GREETING
