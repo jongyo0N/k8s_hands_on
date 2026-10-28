@@ -1,0 +1,28 @@
+# Phase 12 / lab 1 — 루트가 관리하는 "자식" Application.
+# 이 파일은 사람이 kubectl apply 하지 않는다. 루트 Application이 git에서 읽어 apply한다.
+# 이 자식은 manifests/workloads/web(평문 매니페스트)를 phase-12 네임스페이스로 동기화한다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: phase-12-web
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    # <<< GitOps 레포 URL — 루트와 반드시 동일하게 맞춘다.
+    repoURL: https://github.com/jongyo0N/k8s_hands_on.git
+    targetRevision: main
+    path: phase-12-gitops/manifests/workloads/web
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: phase-12
+  syncPolicy:
+    automated:
+      prune: true
+      # selfHeal: true 가 기본값(여기 명시). lab 2에서 이 값을 false↔true로 바꿔
+      # drift를 그대로 두는지 vs 자동 교정하는지 비교한다.
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true # phase-12 네임스페이스를 Argo CD가 자동 생성.

@@ -1,0 +1,37 @@
+# Phase 12 / lab 3 — Prometheus 메트릭 기반 AnalysisTemplate.
+#
+# Rollout이 canary 단계에서 이 템플릿으로 AnalysisRun을 띄운다.
+# successCondition이 참이면 통과(→ 다음 단계로 승격), failureLimit를 넘겨 실패하면
+# Rollout을 abort(→ stable로 자동 롤백).
+#
+# ★ 핵심(완료 기준): 자동 롤백은 "믿을 수 있는 메트릭"이 선행되어야 의미가 있다.
+#   Prometheus가 없거나 쿼리가 틀리면 AnalysisRun은 Error/Inconclusive가 되고,
+#   그 자체로 canary가 멈추거나 롤백된다. 즉 관측성이 canary 자동화의 전제조건이다.
+#   (Prometheus 설치는 Phase 9. 여기서는 주소를 플레이스홀더로 둔다.)
+#
+# apiVersion은 Argo Rollouts CRD: argoproj.io/v1alpha1.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+  namespace: phase-12
+spec:
+  args:
+    - name: service-name
+      value: web.phase-12.svc.cluster.local # Rollout에서 override 가능.
+  metrics:
+    - name: success-rate
+      interval: 30s # 측정 주기.
+      count: 3 # 총 3회 측정.
+      successCondition: result[0] >= 0.95 # 성공률 95% 이상이면 통과.
+      failureLimit: 1 # 실패 측정이 1회를 넘으면 Rollout abort → 롤백.
+      provider:
+        prometheus:
+          # <<< 본인 Prometheus 주소로 바꾼다. (kube-prometheus-stack 기본: monitoring 네임스페이스)
+          address: http://prometheus-operated.monitoring.svc:9090
+          # 아래 쿼리는 "예시"다 — 실제로는 당신 앱이 노출하는 메트릭 이름/라벨에 맞춰야 한다.
+          # (nginx:alpine 기본 이미지는 이 메트릭을 노출하지 않는다. NOTES.md 참고.)
+          query: |
+            sum(rate(nginx_http_requests_total{service="{{args.service-name}}", status!~"5.."}[2m]))
+            /
+            sum(rate(nginx_http_requests_total{service="{{args.service-name}}"}[2m]))

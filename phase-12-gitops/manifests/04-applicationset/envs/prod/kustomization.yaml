@@ -1,0 +1,12 @@
+# prod 오버레이 — base를 가져와 replicas만 바꾼다.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+replicas:
+  - name: web
+    count: 3
+labels:
+  - pairs:
+      env: prod
+    includeSelectors: false

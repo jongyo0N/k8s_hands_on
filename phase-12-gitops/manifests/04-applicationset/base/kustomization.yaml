@@ -1,0 +1,7 @@
+# Phase 12 / lab 4 — ApplicationSet가 배포하는 앱의 공통 base(kustomize).
+# dev/stg/prod 오버레이가 이 base를 참조해 "파라미터만" 바꾼다(여기서는 replicas).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deployment.yaml
+  - service.yaml

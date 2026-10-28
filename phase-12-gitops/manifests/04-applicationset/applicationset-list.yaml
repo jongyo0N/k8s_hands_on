@@ -1,0 +1,43 @@
+# Phase 12 / lab 4 — ApplicationSet (list generator).
+#
+# ApplicationSet = "Application을 찍어내는 공장". generator가 파라미터 집합을 만들고,
+# template에 그 파라미터를 끼워 환경마다 Application을 하나씩 생성한다.
+# 여기서는 list generator가 dev/stg/prod 3개 원소를 직접 나열한다.
+#
+# 생성 결과: web-dev, web-stg, web-prod (각각 phase-12-dev/stg/prod 네임스페이스로 동기화).
+# 환경 간 차이는 "오버레이 경로(env)"뿐 — 나머지 template은 공유된다.
+#
+# apiVersion은 argoproj.io/v1alpha1 (Argo CD CRD, ApplicationSet 컨트롤러가 처리).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: web-envs
+  namespace: argocd
+spec:
+  goTemplate: true # Go 템플릿 문법({{.env}}) 사용.
+  goTemplateOptions: ["missingkey=error"] # 치환 키가 없으면 에러로 잡아낸다.
+  generators:
+    - list:
+        elements:
+          - env: dev
+          - env: stg
+          - env: prod
+  template:
+    metadata:
+      name: "web-{{.env}}"
+    spec:
+      project: default
+      source:
+        # <<< GitOps 레포 URL — 본인 레포로 바꾼다.
+        repoURL: https://github.com/jongyo0N/k8s_hands_on.git
+        targetRevision: main
+        path: "phase-12-gitops/manifests/04-applicationset/envs/{{.env}}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "phase-12-{{.env}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

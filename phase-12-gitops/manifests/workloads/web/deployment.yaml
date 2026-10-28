@@ -1,0 +1,31 @@
+# Phase 12 / lab 1 — app-of-apps의 자식 Application이 배포하는 "평문 매니페스트".
+# GitOps에서 git에 그대로 커밋되는 선언적 상태의 한 예(런타임 템플릿 렌더 없이 directory 타입).
+# lab 2(drift & self-heal)는 바로 이 Deployment를 kubectl로 손대서 drift를 만든다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: phase-12
+  labels:
+    app: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi

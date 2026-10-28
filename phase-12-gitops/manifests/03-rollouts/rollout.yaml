@@ -1,0 +1,49 @@
+# Phase 12 / lab 3 — Argo Rollouts canary.
+#
+# Deployment 대신 Rollout 리소스를 쓴다. strategy.canary.steps로 트래픽/replica 비중을
+# 단계적으로 올리고, 중간에 pause(수동/시간)와 analysis(메트릭 게이트)를 끼운다.
+#
+# ※ 트래픽 라우터(Gateway API/Istio/SMI 등, Phase 4) 없이 setWeight만 쓰면,
+#   Argo Rollouts는 비중을 "canary replica 개수"로 근사한다(정밀 트래픽 분할 아님).
+#   정밀 분할이 필요하면 strategy.canary에 trafficRouting + canary/stable Service를 추가한다.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: web
+  namespace: phase-12
+spec:
+  replicas: 4
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: web-rollout
+  template:
+    metadata:
+      labels:
+        app: web-rollout
+    spec:
+      containers:
+        - name: web
+          image: nginx:1.27-alpine # 03b 스크립트에서 1.29-alpine으로 올려 canary를 트리거한다.
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+  strategy:
+    canary:
+      steps:
+        - setWeight: 20 # 1) canary 20%.
+        - pause: {} # 2) 무기한 정지 — `kubectl argo rollouts promote`로 수동 승격(관찰용).
+        - setWeight: 50 # 3) canary 50%.
+        - pause: { duration: 30s } # 4) 30초 자동 대기.
+        - analysis: # 5) 메트릭 분석 게이트 — 실패하면 자동 롤백.
+            templates:
+              - templateName: success-rate
+            args:
+              - name: service-name
+                value: web.phase-12.svc.cluster.local
+        # 분석 통과 시 자동으로 100%까지 승격된다(마지막 단계 이후).

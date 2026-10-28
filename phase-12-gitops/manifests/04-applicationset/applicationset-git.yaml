@@ -1,0 +1,41 @@
+# Phase 12 / lab 4 — ApplicationSet (git directory generator) — list 버전의 대안.
+#
+# list는 환경 목록을 YAML에 "손으로" 적는다. git generator는 레포의 디렉토리 구조를
+# 진실의 원천으로 삼는다: envs/ 아래 하위 디렉토리가 생기면 자동으로 Application이 늘어난다.
+# → 환경 추가 = git에 디렉토리 추가(= PR). "디렉토리 per 환경" 전략과 맞물린다.
+#
+# ※ list와 git 버전은 둘 다 web-dev/stg/prod라는 "같은 이름"의 Application을 만든다.
+#   동시에 적용하면 충돌하므로 한 번에 하나만 쓴다(04 스크립트는 기본적으로 list를 적용).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: web-envs
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        # <<< GitOps 레포 URL — 본인 레포로 바꾼다.
+        repoURL: https://github.com/jongyo0N/k8s_hands_on.git
+        revision: main
+        directories:
+          - path: phase-12-gitops/manifests/04-applicationset/envs/* # 각 하위 디렉토리 = 환경 1개.
+  template:
+    metadata:
+      name: "web-{{.path.basename}}" # basename = 디렉토리 이름(dev/stg/prod).
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/jongyo0N/k8s_hands_on.git
+        targetRevision: main
+        path: "{{.path.path}}" # 매칭된 디렉토리의 전체 경로.
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "phase-12-{{.path.basename}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
