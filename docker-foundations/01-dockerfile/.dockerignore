@@ -1,0 +1,11 @@
+# 빌드 컨텍스트에서 제외 → 전송량↓, 레이어 캐시 안정화, 비밀 유출 방지
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.git
+.gitignore
+*.md
+.env
+.env.*
