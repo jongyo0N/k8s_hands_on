@@ -1,0 +1,70 @@
+# Lab 03 — redis 3-replica StatefulSet
+#
+# StatefulSet이 보장하는 "identity":
+#   - 이름/순서  : redis-0, redis-1, redis-2 (0부터 순서대로 생성, 역순으로 종료)
+#   - 네트워크   : redis-0.redis-headless... 안정적 DNS (Pod가 재생성돼도 동일)
+#   - 스토리지   : volumeClaimTemplates → PVC data-redis-0 ... 각 ordinal에 고정 바인딩
+# Pod를 강제 삭제해도, 같은 이름의 Pod가 "같은 PVC"에 다시 붙어 데이터가 유지된다.
+#
+# 반대로 보장하지 '않는' 것: 노드 간 데이터 복제, 리더 선출, failover.
+#   각 redis-N은 서로 독립 인스턴스일 뿐 (복제를 원하면 redis replication/sentinel/operator).
+#   → 완료 기준 Q3의 핵심.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: phase-02
+  labels:
+    app: redis
+spec:
+  serviceName: redis-headless   # 위 headless Service와 연결 → per-Pod DNS
+  replicas: 3
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command: ["redis-server"]
+          args:
+            - "--appendonly"
+            - "yes"
+            - "--appendfsync"
+            - "always"      # 모든 쓰기를 즉시 fsync → force delete(grace 0)에도 디스크에 남음
+            - "--dir"
+            - "/data"
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            periodSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+  # 각 Pod마다 전용 PVC를 찍어낸다: data-redis-0, data-redis-1, data-redis-2.
+  # kind는 기본 StorageClass 'standard'(local-path provisioner)를 제공하므로 자동 바인딩된다.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: redis   # PVC에도 라벨을 달아 둔다 → 정리 시 `-l app=redis`로 선택 가능
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 128Mi

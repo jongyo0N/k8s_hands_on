@@ -1,0 +1,60 @@
+# Lab 02 — 무중단 rolling update용 Deployment
+#
+# 무중단의 3요소가 모두 들어있다:
+#   1) readinessProbe        — 새 Pod가 "진짜 받을 준비"가 됐을 때만 엔드포인트에 등록.
+#   2) preStop + grace period — 종료 신호 직후 바로 안 죽고 버텨, 엔드포인트 전파 레이스를 흡수.
+#   3) maxSurge/maxUnavailable — 롤아웃 중 처리 용량이 내려가지 않게 교체 순서를 제어.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rolling-web
+  namespace: phase-02
+  labels:
+    app: rolling-web
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: rolling-web
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxSurge=1       : 원하는 수(4)보다 최대 1개 더 띄울 수 있다 → 교체 중에도 용량 유지.
+      # maxUnavailable=0 : 준비된 Pod가 4개 밑으로 내려가지 않는다 → 처리 용량 손실 0.
+      #   둘 다 비율("25%")로도 줄 수 있다. 0/1 조합은 "용량 우선", 느리지만 가장 안전.
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: rolling-web
+    spec:
+      # SIGKILL까지의 총 유예 시간. preStop(아래 10초) + nginx 종료가 이 안에 끝나야 한다.
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: web
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          # 준비됐을 때만 트래픽을 받는다. 롤아웃 시 새 Pod가 Ready여야 구 Pod가 내려간다
+          # (maxUnavailable=0와 결합 → 항상 4개가 떠서 응답).
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 2
+            failureThreshold: 2
+          lifecycle:
+            preStop:
+              exec:
+                # 종료 레이스 흡수: Pod가 Terminating이 되면 (a) 엔드포인트에서 제거되는 일과
+                # (b) 컨테이너에 SIGTERM이 가는 일이 "동시에·비동기로" 일어난다. 전파가 끝나기 전에
+                # nginx가 죽으면 그 짧은 창에서 커넥션 거부(5xx/000)가 난다.
+                # preStop sleep으로 SIGTERM을 미뤄, 그 사이 엔드포인트 제거가 전파되게 한다.
+                command: ["/bin/sh", "-c", "sleep 10"]
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
