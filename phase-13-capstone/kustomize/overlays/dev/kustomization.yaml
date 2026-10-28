@@ -1,0 +1,29 @@
+# dev 오버레이 — 비용 우선, 가용성 희생 (Phase 13: 비용 vs 안정성).
+#   - API replica 1, store replica 1 (최소 구성).
+#   - HPA 범위 축소(1~3).
+#   - API PDB를 maxUnavailable로 완화: replica 1에서 minAvailable 2는 drain을 영구 차단하므로.
+#
+# ⚠️ dev/prod 오버레이는 같은 앱을 환경별로 튜닝한 것이다. 둘 다 namespace=capstone을
+#    쓰므로 한 번에 하나만 적용한다(이 학습 클러스터는 단일). 실무에선 보통 환경별로
+#    클러스터/네임스페이스가 분리된다.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: capstone
+
+resources:
+  - ../../base
+
+replicas:
+  - name: capstone-api
+    count: 1
+
+patches:
+  - path: patch-hpa.yaml
+    target:
+      kind: HorizontalPodAutoscaler
+      name: capstone-api
+  - path: patch-api-pdb.yaml
+    target:
+      kind: PodDisruptionBudget
+      name: capstone-api

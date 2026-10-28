@@ -1,0 +1,16 @@
+# prod: zone에 고르게 분산(Phase 7 topology spread). 단일 zone 장애에도 과반이 살아남게.
+# zone 라벨은 Phase 0 01-create-cluster.sh가 노드에 붙인 topology.kubernetes.io/zone 사용.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: capstone-api
+spec:
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: capstone-api

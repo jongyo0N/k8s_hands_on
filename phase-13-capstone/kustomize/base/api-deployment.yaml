@@ -1,0 +1,100 @@
+# 스테이트리스 API 티어 (Phase 2 워크로드 + Phase 8 하드닝 + Phase 9 메트릭).
+#
+# 통합 포인트:
+#   - 무상태 → Deployment(롤링 업데이트). 상태는 store 티어(StatefulSet)로 분리.
+#   - restricted PSA를 통과하는 securityContext (비root·capability drop·seccomp·RO rootfs).
+#   - nginx 메인 + nginx-prometheus-exporter 사이드카 → ServiceMonitor가 긁을 /metrics 제공.
+#   - probe 3종 분리: startup(느린 기동 흡수) → readiness(트래픽 가부) → liveness(데드락 복구).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: capstone-api
+  labels:
+    app.kubernetes.io/name: capstone-api
+    app.kubernetes.io/part-of: capstone
+    app.kubernetes.io/component: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: capstone-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0        # 무중단: 새 Pod가 Ready되기 전엔 기존 Pod를 빼지 않는다.
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: capstone-api
+        app.kubernetes.io/part-of: capstone
+        app.kubernetes.io/component: api
+    spec:
+      # Pod 레벨 하드닝 — 아래 컨테이너들이 공통으로 상속.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101          # nginx-unprivileged / exporter 모두 비root uid로 동작.
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: nginxinc/nginx-unprivileged:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true      # restricted가 요구하진 않지만 Phase 8 하드닝.
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              # memory는 incompressible → 초과 시 OOMKill (pod-oom.sh에서 관찰).
+              memory: 128Mi
+              # CPU limit은 Phase 7의 논쟁 지점(throttling vs noisy neighbor).
+              # 레이턴시 민감 서비스라면 제거를 고려. 여기선 예측가능성 위해 설정.
+              cpu: 200m
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 3
+            failureThreshold: 20     # 최대 60초까지 기동 대기 → 느린 시작이 CrashLoop로 번지지 않게.
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - { name: nginx-conf, mountPath: /etc/nginx/conf.d, readOnly: true }
+            - { name: tmp, mountPath: /tmp }             # RO rootfs라 쓰기 경로는 emptyDir로.
+            - { name: cache, mountPath: /var/cache/nginx }
+        - name: metrics
+          # nginx stub_status를 Prometheus 포맷으로 변환하는 사이드카(Phase 9).
+          image: nginx/nginx-prometheus-exporter:1.3.0
+          args:
+            - --nginx.scrape-uri=http://127.0.0.1:8081/stub_status
+          ports:
+            - name: metrics
+              containerPort: 9113
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 32Mi }
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: api-config
+        - name: tmp
+          emptyDir: {}
+        - name: cache
+          emptyDir: {}

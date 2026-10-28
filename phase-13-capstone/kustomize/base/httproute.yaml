@@ -1,0 +1,33 @@
+# HTTPRoute (Phase 4) — 앱팀이 소유하는 L7 라우팅 규칙.
+# parentRef로 Gateway에 붙고, backendRef로 API Service(port 80)에 전달한다.
+#
+# 점진적 배포(canary, Phase 12): 여기 backendRefs에 stable/canary 두 Service를 두고
+#   weight(예: 90/10)로 트래픽을 쪼개면 Gateway API 네이티브 canary가 된다.
+#   메트릭 기반 자동 승격/롤백은 Argo Rollouts가 이 weight를 조정하는 방식으로 얹는다.
+#   아래는 단일 backend(뼈대) + 주석으로 canary 확장 지점을 표시.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: capstone-api
+  labels:
+    app.kubernetes.io/name: capstone-api
+    app.kubernetes.io/part-of: capstone
+spec:
+  parentRefs:
+    - name: capstone
+      sectionName: http
+  hostnames:
+    - "api.capstone.example"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: capstone-api
+          port: 80
+          weight: 100
+        # --- canary 확장 지점 (Phase 12) ---
+        # - name: capstone-api-canary
+        #   port: 80
+        #   weight: 0

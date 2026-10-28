@@ -1,0 +1,38 @@
+# API 티어 nginx 설정 (Phase 6 — ConfigMap을 volume으로 주입).
+#   - 8080: 실제 서비스 트래픽(비root가 바인딩 가능한 비특권 포트).
+#   - 127.0.0.1:8081/stub_status: 사이드카 exporter 전용(루프백이라 외부 노출 없음).
+# volume 주입이므로 ConfigMap을 바꾸면 kubelet이 파일을 갱신한다(단, nginx reload는 별도).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  labels:
+    app.kubernetes.io/name: capstone-api
+    app.kubernetes.io/part-of: capstone
+    app.kubernetes.io/component: api
+data:
+  default.conf: |
+    server {
+        listen       8080;
+        server_name  _;
+        default_type text/plain;
+
+        # readiness/liveness/startup probe 대상 — 외부 의존성 체크 없음(Phase 2 원칙).
+        location = /healthz {
+            return 200 "ok\n";
+        }
+
+        location / {
+            return 200 "capstone api — tier=stateless (Phase 13)\n";
+        }
+    }
+
+    # exporter 사이드카가 긁어가는 nginx 내부 상태. 루프백에만 바인딩.
+    server {
+        listen       127.0.0.1:8081;
+        server_name  _;
+
+        location = /stub_status {
+            stub_status;
+        }
+    }

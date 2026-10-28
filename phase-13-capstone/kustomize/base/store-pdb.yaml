@@ -1,0 +1,19 @@
+# 저장소 PodDisruptionBudget (Phase 7).
+#
+# ⚠️ 단일 replica의 딜레마: minAvailable: 1을 걸면 PDB가 노드 drain을 영구 차단한다
+#    (유일한 Pod를 비울 수 없으므로). 그래서 maxUnavailable: 1로 두어 자발적 중단을 허용한다.
+#    = "단일 replica 저장소는 PDB로 가용성을 지킬 수 없다"는 사실의 선언.
+#    진짜 가용성은 replica ≥3 + 실제 복제(operator)로만 온다. 이 PDB는 그 한계를 드러내는 장치.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: capstone-store
+  labels:
+    app.kubernetes.io/name: capstone-store
+    app.kubernetes.io/part-of: capstone
+    app.kubernetes.io/component: store
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: capstone-store

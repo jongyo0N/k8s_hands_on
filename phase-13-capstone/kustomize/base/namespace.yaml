@@ -1,0 +1,21 @@
+# Phase 13 캡스톤 — 통합 앱 네임스페이스
+#
+# 보안(Phase 8): Pod Security Admission을 'restricted' 레벨로 enforce 한다.
+#   - enforce : restricted를 위반하는 Pod는 생성 자체가 거부된다.
+#   - audit   : 위반을 감사 로그에 남긴다.
+#   - warn    : kubectl 사용자에게 경고를 띄운다.
+# restricted가 요구하는 것(비root·capability drop·seccomp·privilege escalation 금지)은
+# 이 네임스페이스의 모든 워크로드 securityContext에서 충족시킨다.
+# *-version: latest = 현재 클러스터 버전의 restricted 정의를 그대로 적용.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: capstone
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    app.kubernetes.io/part-of: capstone

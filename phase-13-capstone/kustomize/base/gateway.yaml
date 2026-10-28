@@ -1,0 +1,24 @@
+# L7 진입점 — Gateway API (Phase 4). Ingress의 역할 미분리/어노테이션 과다를 고친 표준.
+#
+# 역할 분리 모델:
+#   GatewayClass (클러스터 관리자/인프라) → Gateway (이 파일, 플랫폼팀) → HTTPRoute (앱팀)
+#
+# ⚠️ gatewayClassName은 Phase 4에서 설치한 구현체의 GatewayClass와 일치해야 한다.
+#    예: Envoy Gateway = 'eg', Cilium = 'cilium', NGINX Gateway Fabric = 'nginx'.
+#    여기선 'eg'(Envoy Gateway)를 가정. 클래스가 없으면 Gateway는 Accepted=False로 남고
+#    apply 자체는 성공한다(컨트롤러가 프로그래밍만 못 할 뿐).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: capstone
+  labels:
+    app.kubernetes.io/part-of: capstone
+spec:
+  gatewayClassName: eg
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same      # 같은 네임스페이스(capstone)의 Route만 바인딩 허용.

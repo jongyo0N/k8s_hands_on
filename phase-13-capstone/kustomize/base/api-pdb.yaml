@@ -1,0 +1,17 @@
+# API PodDisruptionBudget (Phase 7).
+# 자발적 중단(노드 drain, 업그레이드)에서 최소 2개는 살려 둔다.
+# replica 3 + minAvailable 2 → 한 번에 1개씩만 비울 수 있어 무중단 노드 교체가 가능.
+# (주의: HPA가 minReplicas를 2 이하로 낮추면 PDB가 drain을 영구 차단할 수 있다.)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: capstone-api
+  labels:
+    app.kubernetes.io/name: capstone-api
+    app.kubernetes.io/part-of: capstone
+    app.kubernetes.io/component: api
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: capstone-api
