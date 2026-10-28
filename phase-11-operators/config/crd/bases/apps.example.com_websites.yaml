@@ -1,0 +1,160 @@
+# 이 파일은 `make manifests`(controller-gen) 가 api/v1/website_types.go 의
+# kubebuilder 마커로부터 생성한다. 손으로 고치지 말 것 — 타입을 고치고 재생성한다.
+# 여기 넣어 둔 내용은 website_types.go 의 마커와 1:1로 대응한다.
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: websites.apps.example.com
+spec:
+  group: apps.example.com
+  names:
+    categories:
+    - all
+    kind: Website
+    listKind: WebsiteList
+    plural: websites
+    shortNames:
+    - web
+    singular: website
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.host
+      name: Host
+      type: string
+    - jsonPath: .spec.image
+      name: Image
+      type: string
+    - jsonPath: .spec.replicas
+      name: Desired
+      type: integer
+    - jsonPath: .status.readyReplicas
+      name: Ready
+      type: integer
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: Website 는 "웹 서비스 한 개"를 선언적으로 표현하는 커스텀 리소스다.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: WebsiteSpec 은 사용자가 '원하는 상태(desired state)'를 선언하는 곳이다.
+            properties:
+              host:
+                description: Host 는 외부에 노출할 호스트네임.
+                minLength: 1
+                type: string
+              image:
+                description: Image 는 서비스가 실행할 컨테이너 이미지(repo:tag).
+                minLength: 1
+                type: string
+              port:
+                default: 80
+                description: Port 는 컨테이너가 리슨하는 포트. 미지정 시 80.
+                format: int32
+                maximum: 65535
+                minimum: 1
+                type: integer
+              replicas:
+                default: 1
+                description: Replicas 는 원하는 Pod 복제본 수. 0 이상, 미지정 시 1.
+                format: int32
+                minimum: 0
+                type: integer
+            required:
+            - host
+            - image
+            type: object
+          status:
+            description: WebsiteStatus 는 컨트롤러가 관찰한 '실제 상태(observed state)'를 기록한다.
+            properties:
+              conditions:
+                description: Conditions 는 표준 condition 배열. Ready 타입 하나를 유지한다.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: lastTransitionTime is the last time the condition
+                        transitioned from one status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: message is a human readable message indicating
+                        details about the transition.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: reason contains a programmatic identifier indicating
+                        the reason for the condition's last transition.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                description: ObservedGeneration 은 컨트롤러가 마지막으로 처리한 spec 의 generation.
+                format: int64
+                type: integer
+              phase:
+                description: Phase 는 사람이 읽기 좋은 상위 상태 요약.
+                type: string
+              readyReplicas:
+                description: ReadyReplicas 는 현재 Ready 상태인 Pod 수.
+                format: int32
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

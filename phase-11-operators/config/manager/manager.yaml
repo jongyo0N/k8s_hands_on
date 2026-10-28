@@ -1,0 +1,57 @@
+# 컨트롤러를 클러스터 '안'에서 돌릴 때의 Deployment.
+# (개발 중에는 `make run` 으로 클러스터 '밖'에서 도는 게 더 빠르다.)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: website-operator-controller-manager
+  namespace: website-operator-system
+  labels:
+    app.kubernetes.io/name: website-operator
+    control-plane: controller-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  template:
+    metadata:
+      labels:
+        control-plane: controller-manager
+    spec:
+      serviceAccountName: website-operator-controller-manager
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: manager
+        # `make deploy` 가 kustomize 로 이 플레이스홀더를 실제 IMG 로 바꾼다.
+        image: controller:latest
+        args:
+        - --leader-elect
+        - --health-probe-bind-address=:8081
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            memory: 128Mi

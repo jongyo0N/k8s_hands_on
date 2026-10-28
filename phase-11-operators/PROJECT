@@ -1,0 +1,19 @@
+# kubebuilder 프로젝트 메타데이터. `kubebuilder create api` 등이 이 파일을 읽어
+# 코드 생성 위치를 판단한다. 손으로 만든 이 레포에서도 형식을 맞춰 둔다.
+# 문서: https://book.kubebuilder.io/reference/project-config.html
+domain: example.com
+layout:
+- go.kubebuilder.io/v4
+projectName: website-operator
+repo: github.com/jongyo0N/k8s_hands_on/phase-11-operators
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: example.com
+  group: apps
+  kind: Website
+  path: github.com/jongyo0N/k8s_hands_on/phase-11-operators/api/v1
+  version: v1
+version: "3"
