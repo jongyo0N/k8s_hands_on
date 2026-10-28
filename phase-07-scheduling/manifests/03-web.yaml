@@ -1,0 +1,79 @@
+# Phase 7 / lab 3 — 노드에 고르게 퍼진 Deployment + Service
+#
+# 목표: "무중단 노드 교체(drain)" 시나리오의 대상 워크로드.
+#   - replicas 4 를 worker 3대에 퍼뜨린다 (한 노드엔 최소 2개가 몰린다).
+#   - topologySpreadConstraints 로 zone/hostname 에 고르게 분산.
+#   - readinessProbe 로 "준비된 Pod만 Service 엔드포인트에 포함" → 교체 중 트래픽 보호.
+#
+# ⚠️ whenUnsatisfiable: ScheduleAnyway (soft) 를 쓰는 이유:
+#   DoNotSchedule(hard)로 걸면 노드를 cordon/drain 하는 동안 "제약 위반"이 되어
+#   대체 Pod가 스케줄되지 못하고 Pending 에 빠질 수 있다(교체가 교착).
+#   가용성이 목적이면 soft 가 실무 기본값 — "되도록 퍼뜨리되, 못 퍼뜨릴 바엔 뜨게 한다."
+#   (Phase 0 의 01-create-cluster.sh 가 worker에 topology.kubernetes.io/zone 라벨을
+#    붙여 둔다. 라벨이 없더라도 soft 라서 스케줄은 실패하지 않는다.)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: phase-07
+  labels:
+    app: web
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      # 교체 중 우아한 종료 여유. (Phase 2 의 graceful shutdown 과 연결)
+      terminationGracePeriodSeconds: 10
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: web
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: web
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            # 준비 안 된 Pod는 엔드포인트에서 빠진다 → drain 중 5xx 방지의 핵심.
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 2
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: phase-07
+  labels:
+    app: web
+spec:
+  selector:
+    app: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

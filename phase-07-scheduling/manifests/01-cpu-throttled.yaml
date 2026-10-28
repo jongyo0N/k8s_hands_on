@@ -1,0 +1,38 @@
+# Phase 7 / lab 1 — CPU limit을 "빡빡하게" 건 부하 Pod
+#
+# 핵심 개념: CPU는 compressible 리소스다. limit을 넘으면 커널 CFS(Completely Fair
+#           Scheduler)가 "quota 소진" 상태로 보고 해당 period 동안 프로세스를 멈춘다
+#           = throttling. 죽이지 않고 "느리게" 만든다. (memory는 incompressible →
+#             못 줄이니 죽인다. lab 2에서 대비.)
+#
+# 이 Pod:
+#   - busybox 의 shell busy-loop 이 CPU 1코어를 100% 쓰려 한다.
+#   - 그러나 limits.cpu=100m (0.1코어)로 묶여 있다 → 쓰려는 양의 ~1/10만 허용.
+#   - 결과: 매 CFS period(기본 100ms)마다 10ms만 쓰고 나머지 90ms는 throttle.
+#
+# CFS quota 계산: limits.cpu=100m, period=100000us → quota=10000us (period당 10ms).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cpu-throttled
+  namespace: phase-07
+  labels:
+    app: cpu-demo
+    variant: throttled
+spec:
+  # 관찰 끝나면 바로 지울 수 있게 복구 정책/종료 유예는 짧게.
+  terminationGracePeriodSeconds: 1
+  containers:
+    - name: busy
+      image: busybox:1.37
+      # 단일 busy-loop. 1코어를 꽉 채우려 하지만 limit=100m에 막힌다.
+      # (stress-ng 를 쓰고 싶다면: image: ghcr.io/colinianking/stress-ng,
+      #  args: ["--cpu","1","--timeout","0"] — 여기선 외부 이미지 의존을 피해 busybox 사용)
+      command: ["sh", "-c", "while true; do :; done"]
+      resources:
+        requests:
+          cpu: "50m"      # 스케줄링 기준 + cgroup 가중치(cpu.weight)의 근거
+          memory: "16Mi"
+        limits:
+          cpu: "100m"     # ← 여기가 throttling을 만드는 CFS quota. 빡빡하게.
+          memory: "32Mi"

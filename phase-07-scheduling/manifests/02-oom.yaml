@@ -1,0 +1,33 @@
+# Phase 7 / lab 2 — memory limit을 초과해 OOMKilled 되는 Pod
+#
+# 핵심: memory는 incompressible. limit을 넘으면 커널 cgroup OOM killer가
+#       컨테이너 프로세스를 SIGKILL 한다. 결과:
+#         - 컨테이너 lastState.terminated.reason = OOMKilled
+#         - exit code = 137  (= 128 + 9, 9는 SIGKILL)
+#         - restartPolicy=Always 라서 재시작 → 또 터짐 → CrashLoopBackOff 로 수렴
+#
+# OOM 유발 방법: `tail /dev/zero`.
+#   /dev/zero 는 끝없이 0바이트를 내보내는데 개행이 없어서, tail이 "마지막 줄"을
+#   찾으려고 읽은 내용을 전부 메모리에 버퍼링한다 → 메모리가 무한히 증가 → limit 초과.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: oom-victim
+  namespace: phase-07
+  labels:
+    app: oom-demo
+spec:
+  # 재시작을 반복시키며 OOMKilled 이벤트를 관찰. (OnFailure 로 바꾸면 종료 후 멈춤)
+  restartPolicy: Always
+  terminationGracePeriodSeconds: 1
+  containers:
+    - name: hog
+      image: busybox:1.37
+      command: ["sh", "-c", "echo 'allocating memory until OOM...'; tail /dev/zero"]
+      resources:
+        requests:
+          memory: "16Mi"
+          cpu: "10m"
+        limits:
+          memory: "32Mi"   # ← 이 벽을 넘는 순간 OOMKilled. 작게 잡아 빨리 터지게.
+          cpu: "100m"

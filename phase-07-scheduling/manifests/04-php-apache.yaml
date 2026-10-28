@@ -1,0 +1,51 @@
+# Phase 7 / lab 4 — HPA 대상 워크로드 (CPU 부하에 반응하는 앱)
+#
+# registry.k8s.io/hpa-example 는 공식 HPA 워크스루용 이미지.
+# "/" 요청마다 의도적으로 CPU를 태우는 PHP 앱 → 부하를 주면 CPU 사용률이 치솟는다.
+#
+# HPA가 CPU "사용률(%)"을 계산하려면 requests.cpu 가 반드시 있어야 한다:
+#   utilization% = (실제 CPU 사용량 / requests.cpu) * 100.
+#   requests가 없으면 HPA는 CPU 타겟을 계산할 수 없다 (metrics-server 값만으로는 부족).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: php-apache
+  namespace: phase-07
+  labels:
+    app: php-apache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: php-apache
+  template:
+    metadata:
+      labels:
+        app: php-apache
+    spec:
+      containers:
+        - name: php-apache
+          image: registry.k8s.io/hpa-example
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "200m"     # ← utilization 계산의 분모. 타겟 50% = 100m 근처에서 스케일.
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: php-apache
+  namespace: phase-07
+  labels:
+    app: php-apache
+spec:
+  selector:
+    app: php-apache
+  ports:
+    - port: 80
+      targetPort: 80

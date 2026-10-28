@@ -1,0 +1,9 @@
+# Phase 7 — 모든 실습 리소스를 담는 네임스페이스
+# 정리는 scripts/99-cleanup.sh 가 이 네임스페이스를 통째로 지운다.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: phase-07
+  labels:
+    phase: "07"
+    purpose: scheduling-autoscaling

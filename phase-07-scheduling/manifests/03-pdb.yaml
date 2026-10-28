@@ -1,0 +1,22 @@
+# Phase 7 / lab 3 — PodDisruptionBudget
+#
+# PDB는 "자발적 중단(voluntary disruption)"의 동시 발생량을 제한한다.
+#   자발적 중단 = drain, 노드 업그레이드, kubectl delete 같은 "관리자가 유발한" 축출.
+#   (노드 하드웨어 고장 같은 비자발적 중단은 PDB가 막지 못한다.)
+#
+# maxUnavailable: 1 → 한 번에 최대 1개만 Unavailable 허용.
+#   drain은 Eviction API를 쓰는데, PDB를 위반하는 축출 요청은 429로 거부된다.
+#   그래서 drain은 "1개 축출 → 대체 Pod가 다른 노드에서 Ready 될 때까지 대기 →
+#   다음 1개 축출"을 반복 = 동시 축출 차단 = 무중단.
+#
+# replicas=4, maxUnavailable=1 이므로 항상 최소 3개는 서빙.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-pdb
+  namespace: phase-07
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: web
