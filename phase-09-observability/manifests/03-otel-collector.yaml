@@ -1,0 +1,130 @@
+# Phase 9 / lab 03 — OpenTelemetry Collector (중앙 파이프라인)
+# ------------------------------------------------------------------------------
+# 역할: 한 곳(OTLP 수신기)에서 신호를 받아 가공(batch)·분배(exporters)한다.
+# 이 랩에선 demo-app이 요청마다 보내는 OTLP trace와 log를 받아 debug exporter로 출력한다.
+# -> 'kubectl logs'로 Collector 출력을 보면, 같은 trace_id를 가진 span과 log가 함께 보인다
+#    (= trace<->log correlation). 실무에선 debug 대신 Tempo/Loki/백엔드로 내보낸다.
+#
+# 이미지는 contrib 배포본으로 핀 고정. 최신 확인:
+#   https://github.com/open-telemetry/opentelemetry-collector-contrib/releases
+#   (Docker Hub 멀티아치 릴리스 태그: otel/opentelemetry-collector-contrib)
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: phase-09
+  labels:
+    app: otel-collector
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      # 소량씩 들어오는 신호를 모아 export 횟수를 줄인다. 거의 항상 켜는 기본 가공기.
+      batch:
+        timeout: 2s
+
+    exporters:
+      # 수신한 신호를 Collector 로그로 그대로 찍는다(학습·디버깅용).
+      # verbosity: detailed 면 span/log의 trace_id·span_id까지 보인다 -> 상관을 눈으로 확인.
+      debug:
+        verbosity: detailed
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [debug]
+        logs:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [debug]
+      telemetry:
+        logs:
+          level: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: phase-09
+  labels:
+    app: otel-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.164.0
+          args: ["--config=/etc/otelcol-contrib/config.yaml"]
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+            - name: health
+              containerPort: 13133
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol-contrib
+          readinessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: phase-09
+  labels:
+    app: otel-collector
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http

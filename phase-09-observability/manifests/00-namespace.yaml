@@ -1,0 +1,10 @@
+# Phase 9 — 실습용 네임스페이스
+# 샘플 앱 / ServiceMonitor / OTel Collector / PrometheusRule 이 여기 들어간다.
+# kube-prometheus-stack 자체는 별도의 'monitoring' 네임스페이스에 설치한다(스크립트 01 참고).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: phase-09
+  labels:
+    phase: "09"
+    purpose: observability
