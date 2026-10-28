@@ -1,0 +1,80 @@
+# Phase 10 / lab 01 — kubeadm HA control-plane 부트스트랩 설정
+# =============================================================================
+# 전제(중요): 이 파일은 "실제 노드(VM)"에서 kubeadm 으로 HA control-plane 을 손수
+#   구성하기 위한 설정이다. kind 는 init/join/LB 구성을 자동화해 "감춰"버리므로,
+#   kubeadm 자체를 익히려면 VM(multipass 등)이 필요하다.
+#   → 로컬에서 "결과물"만 관찰하는 대안: scripts/01b-ha-local-inspect.sh + kind-ha-config.yaml
+#
+# apiVersion: kubeadm.k8s.io/v1beta4
+#   - v1beta4 는 kubeadm 1.31 에서 도입되었다 → kubeadm/kubelet >= 1.31 에서만 파싱된다.
+#   - 이 파일은 Kubernetes v1.33 기준으로 작성했다 (아래 kubernetesVersion 핀과 일치).
+#   - v1beta3 대비 가장 큰 변화: 모든 extraArgs / kubeletExtraArgs 가
+#     map(key: value) → "리스트([{name, value}])" 형식으로 바뀌었다. (아래 형식 확인)
+#
+# HA 토폴로지 (이 설정이 전제하는 노드):
+#   LB   10.0.0.10  (HAProxy, :6443 → 3개 apiserver 로 분산)  ← controlPlaneEndpoint 가 가리킴
+#   cp1  10.0.0.11  (control-plane + stacked etcd member 1)   ← 이 파일로 `kubeadm init`
+#   cp2  10.0.0.12  (control-plane + stacked etcd member 2)   ← `kubeadm join --control-plane`
+#   cp3  10.0.0.13  (control-plane + stacked etcd member 3)   ← `kubeadm join --control-plane`
+#   w1   10.0.0.21  (worker)                                   ← `kubeadm join`
+#   w2   10.0.0.22  (worker)                                   ← `kubeadm join`
+#
+#   etcd 쿼럼: 멤버 3개 → (3/2)+1 = 2개가 살아 있어야 쓰기가 가능하다.
+#              1개 장애는 견디고 2개 동시 장애는 못 견딘다. 그래서 control-plane 은
+#              짝수가 아니라 홀수(3, 5)로 둔다. (짝수는 장애 허용치를 늘리지 못하면서 비용만 는다.)
+# =============================================================================
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  # 이 노드(cp1)의 "실제" IP. LB(controlPlaneEndpoint)와 혼동하지 말 것.
+  advertiseAddress: "10.0.0.11"
+  bindPort: 6443
+nodeRegistration:
+  criSocket: "unix:///run/containerd/containerd.sock"
+  # v1beta4: kubeletExtraArgs 는 리스트 형식([{name, value}]). v1beta3 의 map 과 다르다.
+  kubeletExtraArgs:
+    - name: "node-ip"
+      value: "10.0.0.11"
+# 참고: 이 설정으로 init 할 때는 `kubeadm init --config kubeadm-config.yaml --upload-certs` 를 쓴다.
+#   --upload-certs 는 control-plane 인증서를 Secret 으로 업로드해(기본 TTL 2시간), 다른
+#   control-plane 이 `--certificate-key` 로 join 할 수 있게 한다.
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+# 버전 핀: kubeadm 이 이 버전의 control-plane 이미지를 받는다. (kubeadm minor 와 1 이내로 맞출 것)
+kubernetesVersion: "v1.33.0"
+# ★ HA 의 핵심 ★ — 모든 control-plane 앞단 로드밸런서 주소(VIP/DNS):포트.
+#   단일 apiserver IP 가 아니라 LB 를 가리켜야, cp 한 대가 죽어도 kubeconfig/노드가 계속 붙는다.
+#   이 값은 "init 하기 전에" 확정돼야 한다 (나중에 바꾸려면 인증서 SAN 재발급 등 번거롭다).
+controlPlaneEndpoint: "10.0.0.10:6443"
+networking:
+  # Calico 기본 CIDR 와 일치시켰다 (01a init 단계에서 Calico 설치). CNI 를 바꾸면 이 값도 맞춰라.
+  podSubnet: "192.168.0.0/16"
+  serviceSubnet: "10.96.0.0/12"
+  dnsDomain: "cluster.local"
+etcd:
+  # stacked etcd — 각 control-plane 노드가 자체 etcd 멤버를 같은 노드에 "쌓아" 돌린다.
+  #   장점: 노드 수가 적고 구성이 단순. 단점: control-plane 과 etcd 의 장애 도메인이 묶인다.
+  #   대안: external etcd (etcd 를 별도 노드 집합으로 분리) — 장애 격리↑, 운영 복잡도·노드 수↑.
+  local:
+    dataDir: "/var/lib/etcd"
+    # v1beta4: etcd extraArgs 도 리스트 형식. (예시: DB 용량 알람 임계치 8GiB 로 상향)
+    extraArgs:
+      - name: "quota-backend-bytes"
+        value: "8589934592"
+apiServer:
+  # apiserver 인증서 SAN 에 LB 주소를 반드시 포함해야 LB 를 통한 TLS 가 유효하다.
+  #   (SAN 에 없는 주소로 접속하면 x509: certificate is valid for ... 오류)
+  certSANs:
+    - "10.0.0.10"        # LB IP
+    - "k8s-api.internal" # LB DNS (있다면)
+    - "127.0.0.1"
+controllerManager: {}
+scheduler: {}
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+# cgroup 드라이버는 컨테이너 런타임(containerd 의 SystemdCgroup=true)과 반드시 일치해야 한다.
+#   불일치하면 kubelet 이 기동 중 혹은 Pod QoS/리소스 관리에서 문제를 일으킨다.
+#   (kubeadm 1.22+ 기본값이 systemd 지만 의도를 명시해 둔다.)
+cgroupDriver: systemd

@@ -1,0 +1,22 @@
+# Phase 10 / lab 01 (로컬 대안) — kind 로 HA control-plane "결과물"만 관찰
+# =============================================================================
+# 중요: kind 는 kubeadm init/join/LB 구성을 "자동화해서 감춘다".
+#   - 따라서 이 파일로는 kubeadm 을 손으로 익히는 lab 01 의 본질(=직접 부트스트랩)은 배울 수 없다.
+#   - 대신 "HA 가 완성된 상태"(control-plane 3개 + etcd 멤버 3개 + LB 컨테이너)를 로컬에서
+#     공짜로 띄워 구조를 관찰하는 용도다. (scripts/01b-ha-local-inspect.sh 가 이 파일을 사용)
+#   - control-plane 을 2개 이상 두면 kind 가 haproxy LB 컨테이너
+#     'phase10-ha-external-load-balancer' 를 자동 생성하고 controlPlaneEndpoint 를 거기로 잡는다.
+#     → VM 랩에서 우리가 손으로 만든 HAProxy(= manifests/haproxy.cfg)에 대응하는 것을 확인하라.
+#
+# 버전 핀: 01b 스크립트에서 KIND_IMAGE 로 노드 이미지를 고정한다 (기본 kindest/node:v1.33.0).
+# 클러스터 이름은 Phase 0 의 'k8s-mastery' 와 분리해 'phase10-ha' 로 둔다 (충돌 방지).
+# =============================================================================
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: phase10-ha
+nodes:
+  - role: control-plane
+  - role: control-plane
+  - role: control-plane
+  - role: worker
+  - role: worker

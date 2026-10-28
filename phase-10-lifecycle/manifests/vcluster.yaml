@@ -1,0 +1,30 @@
+# Phase 10 / lab 05 (선택) — vCluster 값 파일 (vcluster.yaml)
+# =============================================================================
+# 스키마: vCluster >= 0.20 (values v2). CLI 예: vcluster create tenant-a -n tenant-a -f vcluster.yaml
+#   버전에 따라 키가 바뀔 수 있으니 최신 스키마는 공식 문서로 재확인한다.
+#
+# 개념: vCluster 는 호스트 클러스터의 "한 네임스페이스 안"에 테넌트 전용 가상 control-plane
+#   (apiserver + controller-manager + scheduler + 자체 etcd)을 Pod 로 띄운다.
+#   - 테넌트는 자기 가상 apiserver 에만 접속한다 → 네임스페이스·CRD·RBAC 를 자유롭게 만들어도
+#     호스트와 다른 테넌트에 영향이 없다 (네임스페이스 공유보다 훨씬 강한 격리).
+#   - 테넌트가 만든 Pod 는 syncer 가 호스트 네임스페이스로 "동기화"해 실제 노드에서 실행된다.
+# =============================================================================
+controlPlane:
+  distro:
+    # 가상 control-plane 으로 표준 k8s(apiserver+controller+scheduler)를 사용.
+    #   (기본값은 k3s. 호스트와 동일한 배포판을 쓰면 동작 차이를 줄일 수 있다.)
+    k8s:
+      enabled: true
+  backingStore:
+    # 가상 클러스터 전용 임베디드 etcd. (테넌트의 상태는 호스트 etcd 와 완전히 분리된다.)
+    etcd:
+      embedded:
+        enabled: true
+sync:
+  toHost:
+    # 데모 단순화를 위해 Ingress 동기화는 끈다 (호스트에 Ingress 컨트롤러가 없을 수 있으므로).
+    ingresses:
+      enabled: false
+exportKubeConfig:
+  # `vcluster connect` 로 받는 kubeconfig 의 context 이름.
+  context: tenant-a
