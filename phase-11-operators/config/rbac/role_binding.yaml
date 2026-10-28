@@ -1,0 +1,13 @@
+# manager-role(ClusterRole)을 컨트롤러의 ServiceAccount 에 묶는다.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: website-operator-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: website-operator-manager-role
+subjects:
+- kind: ServiceAccount
+  name: website-operator-controller-manager
+  namespace: website-operator-system

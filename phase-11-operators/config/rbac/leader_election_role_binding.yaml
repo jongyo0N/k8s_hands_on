@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: website-operator-leader-election-rolebinding
+  namespace: website-operator-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: website-operator-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: website-operator-controller-manager
+  namespace: website-operator-system

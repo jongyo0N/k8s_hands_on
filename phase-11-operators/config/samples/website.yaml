@@ -1,0 +1,16 @@
+# 샘플 Website CR. 적용:  kubectl apply -f config/samples/website.yaml
+# 적용하면 컨트롤러가 같은 이름의 Deployment + Service 를 자동 생성한다.
+apiVersion: apps.example.com/v1
+kind: Website
+metadata:
+  name: hello
+  namespace: default
+spec:
+  image: nginx:1.27
+  host: hello.example.com
+  replicas: 2
+  port: 80
+# replicas/port 는 생략 가능(스키마 default 로 1/80 이 채워진다).
+# 검증 데모: 아래처럼 image 를 지우거나 host 를 비우면 API server 가 거부한다.
+#   spec:
+#     host: ""        # minLength=1 위반 → apply 거부

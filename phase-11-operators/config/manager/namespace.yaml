@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: website-operator-system
+  labels:
+    # restricted Pod Security Standard 로 운영 네임스페이스를 하드닝(Phase 8 연계).
+    pod-security.kubernetes.io/enforce: restricted
