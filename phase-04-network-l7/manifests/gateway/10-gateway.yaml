@@ -1,0 +1,22 @@
+# Phase 4 / lab 2 — Gateway (인프라/운영자 소관 리소스)
+# Gateway API의 역할 분리 모델:
+#   GatewayClass = 구현체 선택(클러스터 운영자)  ← 여기선 Cilium이 자동 생성한 'cilium'
+#   Gateway      = 리스너/포트/주소 소유(인프라 팀)
+#   HTTPRoute    = 경로/트래픽 규칙 소유(앱 팀)   ← 20/21 파일
+# Ingress는 이 셋을 어노테이션 한 덩어리로 뭉갰던 것 → Gateway API가 쪼갰다.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: web-gw
+  namespace: gw-demo
+spec:
+  # Cilium을 gatewayAPI.enabled=true 로 깔면 'cilium' GatewayClass가 생긴다.
+  # 확인: kubectl get gatewayclass
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same

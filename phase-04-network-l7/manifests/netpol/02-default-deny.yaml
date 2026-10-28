@@ -1,0 +1,18 @@
+# Phase 4 / lab 3 — default-deny (ingress + egress 모두 차단)
+# 규칙 블록이 '비어있는'(ingress/egress 키 자체가 없는) 정책 = 전부 거부.
+# podSelector: {} = 네임스페이스의 '모든' Pod에 적용.
+# 이 한 장으로 netpol-demo 안팎의 통신이 끊긴다 (DNS 포함 — 그게 lab의 핵심).
+#
+# ⚠️ 집행자는 누구인가?: NetworkPolicy는 '명세'일 뿐 스스로 막지 않는다.
+#    실제 패킷 차단은 CNI(여기선 Cilium의 eBPF)가 데이터패스에서 집행한다.
+#    NetworkPolicy를 지원하지 않는 CNI(예: 단독 Flannel)에선 이 파일이 '무시'된다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: netpol-demo
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

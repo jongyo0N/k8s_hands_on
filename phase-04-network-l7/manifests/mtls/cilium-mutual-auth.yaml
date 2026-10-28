@@ -1,0 +1,24 @@
+# Phase 4 / lab 4 (선택) — Cilium 네이티브 상호 인증(mutual authentication)
+# "메시 없이 mTLS 수준의 '신원 기반 인증'만" 가져가는 Cilium 방식.
+# 전제: Cilium을 mutual auth(SPIFFE/SPIRE)로 설치해야 적용된다 — 04-mtls.sh의 안내 참고.
+#   helm ... --set authentication.mutual.spire.enabled=true \
+#            --set authentication.mutual.spire.install.enabled=true
+#
+# 아래 정책은 "netpol-server로 들어오는 client 트래픽은 상호 인증을 '요구'한다"는 뜻.
+# WireGuard(암호화)와 달리 이건 '신원 검증' 레이어다 — 둘은 보완재.
+# 주의: apiVersion은 cilium.io/v2 (표준 CRD). 최신: https://docs.cilium.io
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: server-require-mutual-auth
+  namespace: netpol-demo
+spec:
+  endpointSelector:
+    matchLabels:
+      app: netpol-server
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            app: netpol-client
+      authentication:
+        mode: required

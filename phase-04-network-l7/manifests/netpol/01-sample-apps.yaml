@@ -1,0 +1,53 @@
+# Phase 4 / lab 3 — 샘플 앱: server(nginx) + client(netshoot)
+#   server : nginx, Service 'netpol-server'(:80)
+#   client : netshoot(curl/nslookup/dig 내장) — exec 로 통신 테스트에 쓴다
+# netshoot 태그는 고정. 최신: https://github.com/nicolaka/netshoot/releases
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netpol-server
+  namespace: netpol-demo
+  labels: { app: netpol-server }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: netpol-server }
+  template:
+    metadata:
+      labels: { app: netpol-server }
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netpol-server
+  namespace: netpol-demo
+spec:
+  selector: { app: netpol-server }
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netpol-client
+  namespace: netpol-demo
+  labels: { app: netpol-client }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: netpol-client }
+  template:
+    metadata:
+      labels: { app: netpol-client }
+    spec:
+      containers:
+        - name: netshoot
+          image: nicolaka/netshoot:v0.13
+          command: ["sleep", "infinity"]

@@ -1,0 +1,7 @@
+# Phase 4 / lab 3 — 격리 실험용 네임스페이스
+# 'kubernetes.io/metadata.name: netpol-demo' 라벨은 API server가 자동으로 붙인다
+# (NamespaceDefaultLabelName, 1.22+ GA). 04-allow-dns.yaml 의 namespaceSelector가 이를 활용.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: netpol-demo

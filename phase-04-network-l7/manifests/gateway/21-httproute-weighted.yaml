@@ -1,0 +1,25 @@
+# Phase 4 / lab 2 — 가중치 기반 트래픽 분할 (카나리 90/10)
+#   /split 로 들어온 요청을 echo-v1:echo-v2 = 90:10 으로 쪼갠다.
+# weight는 backendRef들 사이의 '상대 비율'이다(합이 100일 필요 없음). 90/10 ≈ 9:1.
+# 검증(약 20회 반복): v1이 대략 9번, v2가 대략 1번 나오면 성공.
+#   for i in $(seq 1 20); do curl -s http://<gw>/split; done | sort | uniq -c
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: echo-split
+  namespace: gw-demo
+spec:
+  parentRefs:
+    - name: web-gw
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /split
+      backendRefs:
+        - name: echo-v1
+          port: 80
+          weight: 90
+        - name: echo-v2
+          port: 80
+          weight: 10

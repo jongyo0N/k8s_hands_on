@@ -1,0 +1,25 @@
+# Phase 4 — Cilium 전용 kind 클러스터 (control-plane 1 + worker 2)
+# Ref: https://kind.sigs.k8s.io/docs/user/configuration/
+#      https://docs.cilium.io/en/stable/installation/kind/
+#
+# 이 Phase는 Phase 0의 'k8s-mastery' 클러스터와 별개의 전용 클러스터를 쓴다.
+# 이유: CNI와 kube-proxy를 '직접' 갈아끼우기 때문에 깨끗한 클러스터가 필요하다.
+#
+# 핵심 두 가지:
+#   disableDefaultCNI: true  → kind 기본 CNI(kindnet)를 깔지 않는다.
+#                              → 설치 직후 노드는 NotReady, CoreDNS는 Pending.
+#                              → Cilium을 설치해야 비로소 Pod 네트워크가 선다. (lab 01)
+#   kubeProxyMode: "none"    → kube-proxy를 아예 배포하지 않는다.
+#                              → Service(ClusterIP/NodePort) 처리를 Cilium의
+#                                kube-proxy replacement(eBPF)가 대신한다.
+#                              → "CNI vs kube-proxy 분업"을 Cilium 하나로 합쳐보는 실습.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: k8s-l7
+networking:
+  disableDefaultCNI: true
+  kubeProxyMode: "none"
+nodes:
+  - role: control-plane
+  - role: worker
+  - role: worker

@@ -1,0 +1,17 @@
+# Phase 4 / lab 4 (선택) — 대안: Istio ambient 메시의 mTLS 강제
+# 전제: Istio ambient를 설치하고(istioctl install --set profile=ambient),
+#       네임스페이스를 ambient 데이터플레인에 편입해야 한다:
+#         kubectl label namespace netpol-demo istio.io/dataplane-mode=ambient
+#       그러면 ztunnel이 Pod 간 트래픽에 mTLS를 '투명하게' 입힌다(사이드카 없음).
+#
+# 아래 PeerAuthentication은 "평문(plaintext) 거부, mTLS만 허용"을 강제(STRICT)한다.
+# 주의: apiVersion은 Istio 버전에 따라 security.istio.io/v1 또는 v1beta1.
+#       최신: https://istio.io/latest/docs/reference/config/security/peer_authentication/
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: netpol-demo
+spec:
+  mtls:
+    mode: STRICT
