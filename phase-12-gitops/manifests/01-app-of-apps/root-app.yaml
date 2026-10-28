@@ -1,0 +1,35 @@
+# Phase 12 / lab 1 — app-of-apps의 "루트" Application.
+#
+# app-of-apps 패턴: 사람이 손으로 만드는 Application은 이 루트 하나뿐이다.
+# 루트의 source는 "자식 Application 매니페스트들이 들어있는 디렉토리"를 가리키고,
+# Argo CD는 그 디렉토리의 YAML(=자식 Application CR)들을 클러스터에 apply한다.
+# → 자식 Application이 다시 각자의 워크로드를 동기화한다(2단 reconciliation).
+# 이렇게 하면 "어떤 앱들이 클러스터에 있어야 하는가" 자체가 git으로 버전관리된다.
+#
+# apiVersion은 Argo CD CRD 그대로: argoproj.io/v1alpha1 (Application/ApplicationSet 공통).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd # Argo CD는 기본적으로 자기 네임스페이스(argocd)의 Application만 watch한다.
+  # finalizer: 이 Application을 지우면 자식 Application과 그 리소스까지 연쇄 삭제(cascading).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    # <<< GitOps 레포 URL — 포크했다면 본인 레포로 바꾼다. (README의 'GitOps 레포 설정' 참고)
+    repoURL: https://github.com/jongyo0N/k8s_hands_on.git
+    targetRevision: main # PR 머지 전에는 'phase-12-gitops' 브랜치를 가리켜도 된다.
+    path: phase-12-gitops/manifests/01-app-of-apps/apps
+    directory:
+      recurse: false # apps/ 바로 아래의 Application 매니페스트만 읽는다.
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd # 자식 Application CR은 argocd 네임스페이스에 생성된다.
+  syncPolicy:
+    automated:
+      prune: true # git에서 사라진 자식 Application은 클러스터에서도 제거.
+      selfHeal: true # 자식 Application을 손으로 지워도 git 기준으로 되살린다.
+    syncOptions:
+      - CreateNamespace=true
