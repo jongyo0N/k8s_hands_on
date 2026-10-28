@@ -1,0 +1,17 @@
+# Phase 5 / lab 1 — StorageClass (volumeBindingMode: WaitForFirstConsumer)
+# Ref: https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode
+#
+# WaitForFirstConsumer(WFFC) = PVC를 소비하는 Pod가 스케줄될 때까지 바인딩을 미룬다.
+#   → 스케줄러가 Pod를 배치할 노드를 먼저 정하고, provisioner는 그 노드에 PV를 만든다.
+#   → local PV / 토폴로지 제약이 있는 CSI에서 "볼륨이 Pod를 따라간다" = 노드 제약이 깨지지 않는다.
+#
+# 참고: kind 기본 'standard' SC도 rancher.io/local-path + WFFC 다(이미 올바른 기본값).
+#       그래서 lab 2는 'standard'를 그대로 쓴다. 여기서는 Immediate와 대조하려고 별도 생성.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: phase05-local-wffc
+provisioner: rancher.io/local-path
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+allowVolumeExpansion: false

@@ -1,0 +1,19 @@
+# Phase 5 / lab 1 — StorageClass (volumeBindingMode: Immediate)
+# Ref: https://kubernetes.io/docs/concepts/storage/storage-classes/#volume-binding-mode
+#
+# 핵심: provisioner는 kind 기본 local-path와 동일(rancher.io/local-path).
+#       아래 WaitForFirstConsumer SC와 '바인딩 모드만' 다르다 → 깨끗한 A/B 비교.
+#
+# Immediate = PVC가 만들어지는 즉시 PV를 provision/bind 한다.
+#   → 아직 Pod가 없어서 "어느 노드에 둘지" 알 수 없는데도 노드를 하나 골라 고정한다.
+#   → local-path PV는 그 노드에 nodeAffinity로 묶이므로, 나중에 Pod가 다른 노드로
+#     가야 하면(멀티 AZ/anti-affinity/노드 포화) "volume node affinity conflict"가 난다.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: phase05-local-immediate
+provisioner: rancher.io/local-path
+volumeBindingMode: Immediate
+reclaimPolicy: Delete
+# local-path는 볼륨 확장을 지원하지 않는다(= false). CSI 드라이버 대부분은 true 가능.
+allowVolumeExpansion: false

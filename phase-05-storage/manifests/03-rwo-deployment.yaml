@@ -1,0 +1,42 @@
+# Phase 5 / lab 3 — RWO PVC를 쓰는 Deployment (관찰 랩)
+#
+# nodeSelector로 app-tier 워커(Phase 0에서 node-tier=app = worker 2대)에 고정한다.
+#   → 스케줄 가능한 후보 노드는 2개지만, local-path PV는 그중 '실제로 데이터가 생긴 한 노드'에만 묶인다.
+#   → 그 노드를 drain 하면 Pod는 나머지 app-tier 워커로 가려 하지만 볼륨이 따라오지 못해 막힌다.
+#
+# strategy: Recreate 인 이유:
+#   RWO는 노드 단위 단일 attach라, RollingUpdate(기존 Pod 유지한 채 새 Pod 생성)는
+#   새 Pod가 다른 노드로 가면 Multi-Attach로 교착될 수 있다. 상태ful 워크로드에서 흔한 함정.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rwo-app
+  namespace: phase-05
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: rwo-app
+  template:
+    metadata:
+      labels:
+        app: rwo-app
+    spec:
+      nodeSelector:
+        node-tier: app
+      containers:
+        - name: app
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - "while true; do echo \"$(date -u) $(hostname)\" >> /data/heartbeat.log; sleep 5; done"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: rwo-data
