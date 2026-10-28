@@ -1,0 +1,33 @@
+# Phase 9 / lab 01 — demo-app을 Prometheus에 연결하는 ServiceMonitor
+# ------------------------------------------------------------------------------
+# ★ 가장 흔한 함정: "ServiceMonitor를 만들었는데 왜 스크랩이 안 되지?"
+#   Prometheus Operator(kube-prometheus-stack)는 'serviceMonitorSelector'로 대상을
+#   고른다. 이 차트의 기본값은 release 라벨이 붙은 것만 고르게 되어 있다
+#   (serviceMonitorSelectorNilUsesHelmValues=true -> selector={release: <릴리스명>}).
+#   그래서 아래 labels.release 값이 helm 릴리스명과 반드시 같아야 한다.
+#   (이 레포는 릴리스명을 'kube-prometheus-stack'으로 고정한다 — 스크립트 01 참고.)
+#
+# apiVersion은 Prometheus Operator CRD: monitoring.coreos.com/v1
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: demo-app
+  namespace: phase-09
+  labels:
+    app: demo-app
+    release: kube-prometheus-stack   # ★ Operator가 이 라벨로 ServiceMonitor를 선택
+spec:
+  selector:
+    matchLabels:
+      app: demo-app                  # phase-09의 'demo-app' Service를 고른다
+  namespaceSelector:
+    matchNames:
+      - phase-09
+  endpoints:
+    - port: http                     # Service의 포트 '이름'과 일치
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+    # 참고: 폭주 방지 가드레일. sampleLimit을 걸면 스크랩당 샘플 수 상한을 넘을 때
+    #       그 타깃을 통째로 버린다. lab 02에서 이 줄의 효과를 직접 실험해볼 수 있다.
+    # sampleLimit: 100

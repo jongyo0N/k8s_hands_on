@@ -1,0 +1,99 @@
+# Phase 9 / lab 01 — RED 대시보드 (Grafana 자동 임포트)
+# ------------------------------------------------------------------------------
+# kube-prometheus-stack의 Grafana에는 sidecar가 붙어 있어, 'grafana_dashboard=1' 라벨이
+# 달린 ConfigMap을 자동으로 대시보드로 올린다.
+# ★ 기본값에선 sidecar가 'Grafana와 같은 네임스페이스(monitoring)'만 감시한다. 그래서
+#   이 ConfigMap은 monitoring 네임스페이스에 둔다. (전 네임스페이스를 감시하게 하려면
+#   helm values의 grafana.sidecar.dashboards.searchNamespace=ALL)
+#
+# 패널은 RED 3종: Rate / Errors(비율) / Duration(p95). datasource는 템플릿 변수로 받아
+# 기본 Prometheus 데이터소스를 선택한다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-app-red-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  demo-app-red.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "graphTooltip": 1,
+      "schemaVersion": 39,
+      "title": "Phase 9 — demo-app RED",
+      "uid": "phase09-demo-red",
+      "tags": ["phase-09", "RED"],
+      "time": { "from": "now-30m", "to": "now" },
+      "refresh": "10s",
+      "templating": {
+        "list": [
+          {
+            "name": "datasource",
+            "label": "Datasource",
+            "type": "datasource",
+            "query": "prometheus",
+            "refresh": 1,
+            "hide": 0,
+            "current": {}
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Rate — 초당 요청수 (by path)",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "sum(rate(http_requests_total{job=\"demo-app\"}[5m])) by (path)",
+              "legendFormat": "{{path}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Errors — 5xx 비율",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0 }, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "sum(rate(http_requests_total{job=\"demo-app\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"demo-app\"}[5m]))",
+              "legendFormat": "error ratio"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Duration — p95 / p50 (by path)",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"demo-app\"}[5m])) by (le, path))",
+              "legendFormat": "p95 {{path}}"
+            },
+            {
+              "refId": "B",
+              "datasource": { "type": "prometheus", "uid": "${datasource}" },
+              "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job=\"demo-app\"}[5m])) by (le, path))",
+              "legendFormat": "p50 {{path}}"
+            }
+          ]
+        }
+      ]
+    }

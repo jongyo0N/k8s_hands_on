@@ -1,0 +1,283 @@
+# Phase 9 — 샘플 앱 (lab 01/02/03 공용)
+# ------------------------------------------------------------------------------
+# 순수 Python 표준 라이브러리만 쓰는 HTTP 앱. 외부 의존성/이미지 빌드가 없다.
+# python:3.12-slim 위에 ConfigMap으로 소스를 마운트해 바로 실행한다.
+#
+# 환경변수로 동작을 바꿔 세 랩을 하나의 앱으로 커버한다:
+#   - 기본            : RED 메트릭(/metrics)만 노출                    (lab 01)
+#   - HIGH_CARDINALITY: http_requests_total에 요청마다 고유 user_id 라벨 (lab 02)
+#   - OTEL_EXPORTER_OTLP_ENDPOINT: 요청마다 OTLP trace+log를 Collector로 (lab 03)
+#
+# 노출 메트릭:
+#   http_requests_total{method,path,status}              (counter, RED의 Rate/Errors)
+#   http_request_duration_seconds_bucket{path,le}        (histogram, RED의 Duration)
+#   http_request_duration_seconds_{sum,count}{path}
+# 엔드포인트: /(빠른 200) /slow(느린 200) /error(500) /healthz /metrics
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-app-src
+  namespace: phase-09
+data:
+  app.py: |
+    #!/usr/bin/env python3
+    # Phase 9 demo-app — stdlib 전용. RED 메트릭 + (옵션) OTLP trace/log.
+    import json
+    import os
+    import random
+    import threading
+    import time
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    PORT = int(os.environ.get("PORT", "8080"))
+    HIGH_CARD = os.environ.get("HIGH_CARDINALITY", "false").lower() == "true"
+    OTLP = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").rstrip("/")
+    SERVICE = os.environ.get("OTEL_SERVICE_NAME", "demo-app")
+
+    # Prometheus 히스토그램 버킷(초). 누적(cumulative) 규칙으로 노출한다.
+    BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+
+    _lock = threading.Lock()
+    _counter = {}  # key=(method,path,status[,user_id]) -> count
+    _hist = {}     # path -> {"buckets":[...], "sum":float, "count":int}
+
+
+    def obs_counter(method, path, status, user_id):
+        # HIGH_CARD일 때만 user_id 라벨을 key에 포함한다 -> 시계열 수가 요청마다 늘어난다.
+        key = (method, path, status, user_id) if HIGH_CARD else (method, path, status)
+        with _lock:
+            _counter[key] = _counter.get(key, 0) + 1
+
+
+    def obs_hist(path, seconds):
+        with _lock:
+            h = _hist.get(path)
+            if h is None:
+                h = {"buckets": [0] * len(BUCKETS), "sum": 0.0, "count": 0}
+                _hist[path] = h
+            h["sum"] += seconds
+            h["count"] += 1
+            # 버킷은 "값 <= le" 누적. 오름차순이므로 해당 이상 버킷을 모두 증가시킨다.
+            for i, boundary in enumerate(BUCKETS):
+                if seconds <= boundary:
+                    h["buckets"][i] += 1
+
+
+    def render_metrics():
+        out = []
+        out.append("# HELP http_requests_total 처리한 HTTP 요청 수")
+        out.append("# TYPE http_requests_total counter")
+        with _lock:
+            for key, val in list(_counter.items()):
+                if HIGH_CARD:
+                    m, p, s, u = key
+                    out.append('http_requests_total{method="%s",path="%s",status="%s",user_id="%s"} %d' % (m, p, s, u, val))
+                else:
+                    m, p, s = key
+                    out.append('http_requests_total{method="%s",path="%s",status="%s"} %d' % (m, p, s, val))
+            out.append("# HELP http_request_duration_seconds 요청 처리 시간(초)")
+            out.append("# TYPE http_request_duration_seconds histogram")
+            for p, h in list(_hist.items()):
+                for i, boundary in enumerate(BUCKETS):
+                    out.append('http_request_duration_seconds_bucket{path="%s",le="%g"} %d' % (p, boundary, h["buckets"][i]))
+                out.append('http_request_duration_seconds_bucket{path="%s",le="+Inf"} %d' % (p, h["count"]))
+                out.append('http_request_duration_seconds_sum{path="%s"} %g' % (p, h["sum"]))
+                out.append('http_request_duration_seconds_count{path="%s"} %d' % (p, h["count"]))
+        return "\n".join(out) + "\n"
+
+
+    def rfc3339(ts):
+        return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts)) + "Z"
+
+
+    def otlp_post(subpath, payload):
+        req = urllib.request.Request(
+            OTLP + subpath,
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(req, timeout=2).read()
+        except Exception as e:  # 수집기가 아직 없을 수 있다 -> best-effort, 앱은 계속 돈다.
+            print(json.dumps({"level": "warn", "msg": "otlp export failed", "target": subpath, "err": str(e)}), flush=True)
+
+
+    def send_trace(trace_id, span_id, path, status, start, end):
+        code = 2 if status >= 500 else 1  # STATUS_CODE_ERROR=2, OK=1
+        otlp_post("/v1/traces", {"resourceSpans": [{
+            "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": SERVICE}}]},
+            "scopeSpans": [{"scope": {"name": "demo-app-manual"}, "spans": [{
+                "traceId": trace_id, "spanId": span_id,
+                "name": "GET %s" % path, "kind": 2,
+                "startTimeUnixNano": str(int(start * 1e9)),
+                "endTimeUnixNano": str(int(end * 1e9)),
+                "attributes": [
+                    {"key": "http.request.method", "value": {"stringValue": "GET"}},
+                    {"key": "url.path", "value": {"stringValue": path}},
+                    {"key": "http.response.status_code", "value": {"intValue": str(status)}},
+                ],
+                "status": {"code": code},
+            }]}],
+        }]})
+
+
+    def send_log(trace_id, span_id, path, status, start):
+        # OTLP LogRecord의 traceId/spanId 필드 -> 수집기 안에서 log<->trace가 상관된다.
+        sev = 17 if status >= 500 else 9  # SEVERITY_NUMBER ERROR=17, INFO=9
+        otlp_post("/v1/logs", {"resourceLogs": [{
+            "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": SERVICE}}]},
+            "scopeLogs": [{"scope": {"name": "demo-app-manual"}, "logRecords": [{
+                "timeUnixNano": str(int(start * 1e9)),
+                "severityNumber": sev,
+                "severityText": "ERROR" if status >= 500 else "INFO",
+                "body": {"stringValue": "handled GET %s -> %d" % (path, status)},
+                "traceId": trace_id, "spanId": span_id,
+                "attributes": [{"key": "url.path", "value": {"stringValue": path}}],
+            }]}],
+        }]})
+
+
+    def emit_telemetry(path, status, start, end):
+        trace_id = os.urandom(16).hex()  # OTLP/JSON은 trace/span id를 hex 문자열로 쓴다
+        span_id = os.urandom(8).hex()
+        # 구조화 로그를 stdout에 남긴다. trace_id가 로그<->트레이스를 잇는 키.
+        print(json.dumps({
+            "ts": rfc3339(start), "level": "info", "msg": "handled request",
+            "method": "GET", "path": path, "status": status,
+            "duration_ms": round((end - start) * 1000, 1), "trace_id": trace_id, "span_id": span_id,
+        }), flush=True)
+        send_trace(trace_id, span_id, path, status, start, end)
+        send_log(trace_id, span_id, path, status, start)
+
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):  # 기본 액세스 로그 끔(메트릭/구조화 로그로 대체)
+            pass
+
+        def reply(self, status, body, ctype="text/plain; charset=utf-8"):
+            data = body.encode() if isinstance(body, str) else body
+            self.send_response(status)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            try:
+                self.wfile.write(data)
+            except BrokenPipeError:
+                pass
+
+        def route(self, path):
+            if path == "/":
+                time.sleep(random.uniform(0.001, 0.03))
+                return 200, "hello\n"
+            if path == "/slow":
+                time.sleep(random.uniform(0.2, 1.2))
+                return 200, "slow ok\n"
+            if path == "/error":
+                return 500, "boom\n"
+            return 404, "not found\n"
+
+        def do_GET(self):
+            path = self.path.split("?", 1)[0]
+            if path == "/metrics":
+                self.reply(200, render_metrics(), ctype="text/plain; version=0.0.4; charset=utf-8")
+                return
+            if path == "/healthz":
+                self.reply(200, "ok\n")
+                return
+            start = time.time()
+            status, body = self.route(path)
+            end = time.time()
+            norm = path if path in ("/", "/slow", "/error") else "/other"
+            user_id = ("u-%d" % random.randint(0, 10 ** 9)) if HIGH_CARD else "none"
+            obs_counter("GET", norm, str(status), user_id)
+            obs_hist(norm, end - start)
+            self.reply(status, body)
+            if OTLP:
+                emit_telemetry(norm, status, start, end)
+
+
+    def main():
+        mode = []
+        if HIGH_CARD:
+            mode.append("HIGH_CARDINALITY")
+        if OTLP:
+            mode.append("OTLP->%s" % OTLP)
+        print(json.dumps({"level": "info", "msg": "demo-app starting", "port": PORT, "mode": mode or ["baseline"]}), flush=True)
+        ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+
+
+    if __name__ == "__main__":
+        main()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app
+  namespace: phase-09
+  labels:
+    app: demo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      labels:
+        app: demo-app
+    spec:
+      containers:
+        - name: app
+          image: python:3.12-slim   # 최신 확인: docker.io/library/python 태그
+          command: ["python3", "/app/app.py"]
+          env:
+            # lab 02에서 'true'로 패치한다(스크립트 02). lab 03에서 OTLP 엔드포인트를 주입한다(스크립트 03).
+            - name: HIGH_CARDINALITY
+              value: "false"
+          ports:
+            - name: http          # ServiceMonitor는 이 포트 '이름'으로 스크랩 대상을 찾는다
+              containerPort: 8080
+          volumeMounts:
+            - name: src
+              mountPath: /app
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+      volumes:
+        - name: src
+          configMap:
+            name: demo-app-src
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-app
+  namespace: phase-09
+  labels:
+    app: demo-app
+spec:
+  selector:
+    app: demo-app
+  ports:
+    - name: http          # ServiceMonitor endpoints[].port 가 이 이름과 일치해야 한다
+      port: 8080
+      targetPort: http
