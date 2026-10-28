@@ -1,0 +1,33 @@
+# Phase 1 / lab 4 — reconciliation(자가치유) 관찰용 Deployment.
+#
+# 이 한 장을 apply하면 소유 체인이 생긴다:
+#   Deployment(원하는 상태 선언) → ReplicaSet(복제본 수 관리) → Pod(실제 실행 단위)
+# Pod를 지우거나(actual < desired) replica 수를 바꾸면, 컨트롤러가 "현재 상태"와
+# "원하는 상태"를 비교해 desired로 수렴시키는 것을 lab 4에서 관찰한다.
+# (선언적 + level-triggered: 이벤트가 아니라 '현재 vs 목표' 차이로 동작)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels:
+    phase: "1"
+    lab: reconcile
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
