@@ -1,0 +1,46 @@
+# Phase 8 / lab 1 — [AFTER] restricted를 통과하도록 하드닝한 Pod
+#
+# 같은 워크로드(nginx-unprivileged)에 securityContext만 채웠다. before와의 차이가
+# 곧 "restricted가 요구하는 것"의 전부다. 빈 상태에서 이 블록을 직접 쓸 수 있어야
+# 이 Phase의 완료 기준을 충족한다.
+#
+# 필드 위치 규칙:
+#   - runAsNonRoot / seccompProfile : Pod 또는 컨테이너 레벨 (여기선 Pod 레벨에 둬서 전체 적용)
+#   - allowPrivilegeEscalation / capabilities / readOnlyRootFilesystem : 컨테이너 레벨
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-hardened
+  namespace: phase-08
+  labels:
+    app: web
+    variant: hardened
+spec:
+  securityContext:
+    runAsNonRoot: true          # root(uid 0)로 기동하면 kubelet이 거부
+    runAsUser: 101              # nginx-unprivileged 이미지의 nginx 유저
+    seccompProfile:
+      type: RuntimeDefault      # 위험한 syscall 차단(런타임 기본 프로파일)
+  containers:
+    - name: web
+      image: nginxinc/nginx-unprivileged:1.27-alpine
+      ports:
+        - containerPort: 8080
+      securityContext:
+        allowPrivilegeEscalation: false   # setuid 등으로 권한 상승 금지
+        readOnlyRootFilesystem: true      # 루트 FS 쓰기 금지 (restricted의 '필수'는 아니지만 방어심화)
+        capabilities:
+          drop: ["ALL"]                   # 모든 리눅스 capability 제거
+      # readOnlyRootFilesystem를 켜면 앱이 쓰던 경로에 쓰기용 emptyDir를 따로 줘야 한다.
+      # (하드닝의 현실적 비용: "어디에 쓰는지"를 알아야 read-only FS를 적용할 수 있다.)
+      volumeMounts:
+        - { name: tmp,   mountPath: /tmp }
+        - { name: cache, mountPath: /var/cache/nginx }
+        - { name: run,   mountPath: /var/run }
+      resources:
+        requests: { cpu: 10m, memory: 16Mi }
+        limits:   { memory: 64Mi }
+  volumes:
+    - { name: tmp,   emptyDir: {} }
+    - { name: cache, emptyDir: {} }
+    - { name: run,   emptyDir: {} }

@@ -1,0 +1,21 @@
+# Phase 8 / lab 2 — Role을 appsa에 묶는 RoleBinding
+#
+# RoleBinding은 (주체 subject) ↔ (Role) 연결이다. 주체는 ServiceAccount/User/Group.
+# roleRef는 한 번 만들면 변경 불가(불변) — 바꾸려면 삭제 후 재생성.
+#
+# 주의: RoleBinding이 ClusterRole을 참조하면, 그 권한이 '이 네임스페이스 안으로만'
+#       축소돼 적용된다(유용한 패턴). 반대로 ClusterRoleBinding은 전역 부여라 위험 —
+#       lab에서는 쓰지 않는다. 감사 시 "불필요한 ClusterRoleBinding"을 먼저 의심하라.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: appsa-app-reader
+  namespace: phase-08
+subjects:
+  - kind: ServiceAccount
+    name: appsa
+    namespace: phase-08
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: app-reader

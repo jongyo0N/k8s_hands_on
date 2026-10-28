@@ -1,0 +1,69 @@
+# Phase 8 / lab 3 — ValidatingAdmissionPolicy (CEL) 로 조직 이미지 규칙 코드화
+#
+# ValidatingAdmissionPolicy(VAP)는 1.30에서 GA된 '내장' admission 정책이다.
+# Kyverno/Gatekeeper 같은 외부 컨트롤러·웹훅 없이, CEL 식으로 규칙을 선언한다.
+#   장점: 웹훅 운영 부담 없음, apiserver 인프로세스라 지연·SPOF 적음
+#   한계: 구조적 검증에 특화. 레지스트리 서명 '검증' 같은 암호 연산은 못 한다(→ lab 4 Kyverno)
+#
+# 여기서 코드화하는 조직 규칙 2개:
+#   (a) 승인된 레지스트리 prefix 이미지만 허용  (공급망 출처 통제)
+#   (b) ':latest' 태그 및 태그 미지정 금지      (불변 배포/롤백 추적성)
+#       단, @sha256 다이제스트로 핀한 이미지는 (b)에서 허용(이미 불변).
+#
+# 매칭 대상은 Pod다. Deployment 등 컨트롤러가 만든 Pod도 생성 시점에 걸린다
+# (주의: 그때 '거부되는 것은 Pod'라서 상위 Deployment는 Accepted로 남고 ReplicaSet
+#  이벤트에 에러가 쌓인다 — 이 동작 차이를 README에 설명).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: phase08-image-policy
+spec:
+  failurePolicy: Fail           # CEL 평가 자체가 실패하면(식 오류 등) '안전하게' 거부
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  variables:
+    # 승인된 레지스트리 prefix 목록. 조직 표준 레지스트리로 교체해 사용한다.
+    - name: allowedPrefixes
+      expression: "['registry.k8s.io/', 'ghcr.io/jongyo0N/']"
+    # 일반/init/ephemeral 컨테이너의 이미지를 모두 모은다(없을 수 있어 has()로 가드).
+    - name: images
+      expression: >-
+        object.spec.containers.map(c, c.image) +
+        (has(object.spec.initContainers) ? object.spec.initContainers.map(c, c.image) : []) +
+        (has(object.spec.ephemeralContainers) ? object.spec.ephemeralContainers.map(c, c.image) : [])
+  validations:
+    # --- 규칙 (a): 승인된 레지스트리 prefix 만 ---
+    - expression: "variables.images.all(img, variables.allowedPrefixes.exists(p, img.startsWith(p)))"
+      messageExpression: "'승인되지 않은 레지스트리 이미지가 있습니다. 허용 prefix: ' + variables.allowedPrefixes.join(', ')"
+      reason: Forbidden
+    # --- 규칙 (b): :latest / 태그 미지정 금지 (단 @sha256 핀은 허용) ---
+    # 판정: 다이제스트(@sha256:)가 있으면 통과. 아니면 마지막 ':'가 마지막 '/'보다 뒤에
+    #       있어야(= 진짜 태그가 있어야) 하고, 그 태그가 ':latest'가 아니어야 한다.
+    #       → 'repo:5000/app'(포트 콜론만, 태그 없음), 'app'(태그 없음), 'app:latest' 모두 거부.
+    - expression: >-
+        variables.images.all(img,
+          img.contains('@sha256:') ||
+          (img.lastIndexOf(':') > img.lastIndexOf('/') && !img.endsWith(':latest'))
+        )
+      message: "이미지에 ':latest'를 쓰거나 태그/다이제스트를 생략할 수 없습니다. 불변 태그 또는 @sha256 다이제스트로 핀하세요."
+      reason: Forbidden
+---
+# 정책을 '어디에, 어떻게' 적용할지 묶는 Binding. 정책과 바인딩이 분리돼 있어
+# 같은 정책을 네임스페이스별로 Deny/Audit/Warn 다르게 롤아웃할 수 있다.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: phase08-image-policy-binding
+spec:
+  policyName: phase08-image-policy
+  # 단계적 도입: 처음엔 ["Audit","Warn"]로 관찰 → 안정되면 ["Deny"]로 승격.
+  validationActions: ["Deny"]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        # 내장 라벨로 phase-08 네임스페이스에만 적용(모든 ns에 kubernetes.io/metadata.name 존재).
+        kubernetes.io/metadata.name: phase-08

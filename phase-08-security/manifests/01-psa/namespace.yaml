@@ -1,0 +1,29 @@
+# Phase 8 / lab 1 — Pod Security Admission(PSA)이 적용된 네임스페이스
+#
+# PSA는 PodSecurityPolicy(PSP, 1.25에서 제거)의 후계다. 별도 컨트롤러 없이
+# kube-apiserver 내장 admission으로 동작하며, "네임스페이스 라벨"만으로 켠다.
+# 세 가지 모드를 각각 다른 라벨로 지정할 수 있다:
+#   - enforce : 위반 Pod 생성을 '거부'       (가장 강함)
+#   - audit   : 위반을 감사 로그에만 남김      (차단 안 함)
+#   - warn    : 위반 시 kubectl에 경고 출력    (차단 안 함)
+# 실무 도입 정석: warn/audit로 먼저 관찰 → 깨지는 워크로드를 교정 → enforce로 승격.
+#
+# 프로파일 3단계: privileged(무제한) < baseline(최소 상식) < restricted(강한 하드닝).
+# 여기서는 restricted를 enforce 한다.
+#
+# enforce-version을 '핀'하는 이유: 라벨을 latest로 두면 클러스터 업그레이드 시
+# 프로파일 정의가 바뀌어 '조용히' 집행 기준이 달라질 수 있다. 버전을 고정하면
+# 업그레이드와 정책 변경을 분리해 통제할 수 있다. (여기선 Phase 0의 노드 v1.33에 맞춤)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: phase-08
+  labels:
+    # --- enforce: 위반 Pod를 거부 ---
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.33
+    # --- audit/warn: 같은 기준으로 로그/경고도 함께 (가시성) ---
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: v1.33
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: v1.33

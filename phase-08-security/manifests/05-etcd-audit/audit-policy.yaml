@@ -1,0 +1,55 @@
+# Phase 8 / lab 5 — 최소 audit Policy (민감 리소스 접근 기록)
+#
+# audit 로그는 "누가(user) 무엇을(verb/resource) 언제(timestamp) 어디서(sourceIP)"의
+# 사실 기록이다. 사고 조사·규정 준수의 기반. 단, 전부 다 남기면 로그 폭발 → 레벨을 차등한다.
+#
+# 레벨 4종:
+#   None           : 기록 안 함
+#   Metadata       : 요청 '메타데이터'만 (본문 X) — 민감 리소스는 이걸로 '접근 사실'만 남김
+#   Request        : 메타데이터 + 요청 본문
+#   RequestResponse: 메타데이터 + 요청/응답 본문 (가장 상세, 가장 큼)
+#
+# 규칙은 '위에서부터 첫 매칭'이 적용된다 → 순서가 중요하다.
+# kube-apiserver에 --audit-policy-file=<이 파일> --audit-log-path=<로그 경로> 로 적용
+# (05-etcd-audit.sh의 안내 참고).
+apiVersion: audit.k8s.io/v1
+kind: Policy
+# RequestReceived 단계는 노이즈가 커서 제외(응답 완료 단계만 기록).
+omitStages:
+  - RequestReceived
+rules:
+  # 1) Secret/ConfigMap: '접근 사실'은 반드시 남기되, 본문(=값)은 로그에 남기지 않는다.
+  #    (RequestResponse로 하면 Secret 값이 audit 로그로 유출된다 — 안티패턴.)
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["secrets", "configmaps"]
+
+  # 2) 인가 체계 변경(RBAC)은 상세히 — 권한 상승 추적의 핵심.
+  - level: RequestResponse
+    resources:
+      - group: "rbac.authorization.k8s.io"
+        resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+
+  # 3) 컨트롤 플레인 컴포넌트의 내부 트래픽은 제외(노이즈).
+  - level: None
+    users:
+      - "system:kube-scheduler"
+      - "system:kube-controller-manager"
+      - "system:apiserver"
+
+  # 4) 흔한 읽기성 폴링(get/list/watch)의 노이즈 리소스 제외.
+  - level: None
+    verbs: ["get", "list", "watch"]
+    resources:
+      - group: ""
+        resources: ["events", "endpoints"]
+      - group: "coordination.k8s.io"
+        resources: ["leases"]
+
+  # 5) 그 외 '변경'(쓰기) 요청은 Metadata로 기본 기록.
+  - level: Metadata
+    verbs: ["create", "update", "patch", "delete", "deletecollection"]
+
+  # 6) 나머지(주로 일반 읽기)는 기록하지 않아 로그량을 억제.
+  - level: None

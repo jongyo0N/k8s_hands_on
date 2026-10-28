@@ -1,0 +1,31 @@
+# Phase 8 / lab 1 — [BEFORE] 하드닝이 안 된 Pod
+#
+# securityContext가 전혀 없다. restricted 프로파일은 아래 조건을 '명시적으로'
+# 요구하므로, 이 Pod는 phase-08 네임스페이스에서 '거부(denied)'된다:
+#   - runAsNonRoot: true            (root로 돌지 않음을 '보장'하라)
+#   - allowPrivilegeEscalation: false
+#   - capabilities.drop: ["ALL"]
+#   - seccompProfile.type: RuntimeDefault
+# (이미지가 실제로 non-root로 돌 수 있는지와 무관하게, 필드가 비어 있으면 거부된다.
+#  admission은 '선언'을 검사할 뿐 런타임을 보지 않는다.)
+#
+# 거부 메시지 예:
+#   Error from server (Forbidden): ... violates PodSecurity "restricted:v1.33":
+#     allowPrivilegeEscalation != false, unrestricted capabilities,
+#     runAsNonRoot != true, seccompProfile ...
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-insecure
+  namespace: phase-08
+  labels:
+    app: web
+    variant: insecure
+spec:
+  containers:
+    - name: web
+      # nginx-unprivileged는 8080에서 non-root로 서비스한다. 그래도 securityContext를
+      # 안 채우면 restricted가 거부한다 — '좋은 이미지'만으로는 통과하지 못한다는 점이 핵심.
+      image: nginxinc/nginx-unprivileged:1.27-alpine
+      ports:
+        - containerPort: 8080
