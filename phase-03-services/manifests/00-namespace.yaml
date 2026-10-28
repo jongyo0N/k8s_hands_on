@@ -1,0 +1,8 @@
+# Phase 3 공용 네임스페이스. 모든 랩이 여기(phase-03)에 올라간다.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: phase-03
+  labels:
+    phase: "03"
+    topic: services-dns
